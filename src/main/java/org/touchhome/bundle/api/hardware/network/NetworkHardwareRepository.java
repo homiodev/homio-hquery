@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.logging.log4j.Logger;
 import org.thymeleaf.TemplateEngine;
@@ -49,8 +50,8 @@ public interface NetworkHardwareRepository {
     @ErrorsHandler(onRetCodeError = "There was an unknown error disabling the interface", notRecognizeError = "There was an error disabling the interface")
     void disable(@HQueryParam("iface") String iface);
 
-    @HardwareQuery(name = "Restart network interface", value = "/etc/init.d/networking restart", printOutput = true)
-    void restartNetworkInterface();
+    @HardwareQuery(name = "Restart network interface", value = "wpa_cli -i :iface reconfigure", printOutput = true)
+    void restartNetworkInterface(@HQueryParam("iface") String iface);
 
     @HardwareQuery(name = "Enable network", value = "ifconfig :iface up")
     @ErrorsHandler(onRetCodeError = "There was an unknown error enabling the interface",
@@ -65,7 +66,7 @@ public interface NetworkHardwareRepository {
     void connect_wep(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid, @HQueryParam("password") String password);
 
     @ErrorsHandler(onRetCodeError = "Shit is broken TODO")
-    @HardwareQuery(name = "Connect wpa", value = "wpa_passphrase ':essid' ':password' > wpa-temp.conf && sudo wpa_supplicant -D wext -i :iface -c wpa-temp.conf && rm wpa-temp.conf")
+    @HardwareQuery(name = "Connect wpa", value = "wpa_passphrase ':essid' ':password' > wpa-temp.conf && wpa_supplicant -D wext -i :iface -c wpa-temp.conf && rm wpa-temp.conf")
     void connect_wpa(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid, @HQueryParam("password") String password);
 
     @HardwareQuery(name = "Connect open", value = "iwconfig :iface essid ':essid'")
@@ -142,26 +143,31 @@ public interface NetworkHardwareRepository {
 
     @SneakyThrows
     default String getIPAddress() {
-        if (SystemUtils.IS_OS_LINUX) {
-            return getNetworkDescription().getInet();
-        }
-
         String ipAddress = null;
-        try {
-            for (Enumeration<NetworkInterface> enumNetworks = NetworkInterface.getNetworkInterfaces(); enumNetworks
-                    .hasMoreElements(); ) {
-                NetworkInterface networkInterface = enumNetworks.nextElement();
-                for (Enumeration<InetAddress> enumIpAddr = networkInterface.getInetAddresses(); enumIpAddr
+        if (SystemUtils.IS_OS_WINDOWS) {
+            try {
+                for (Enumeration<NetworkInterface> enumNetworks = NetworkInterface.getNetworkInterfaces(); enumNetworks
                         .hasMoreElements(); ) {
-                    InetAddress inetAddress = enumIpAddr.nextElement();
-                    if (!inetAddress.isLoopbackAddress() && inetAddress.getHostAddress().length() < 18
-                            && inetAddress.isSiteLocalAddress()) {
-                        ipAddress = inetAddress.getHostAddress();
+                    NetworkInterface networkInterface = enumNetworks.nextElement();
+                    for (Enumeration<InetAddress> enumIpAddr = networkInterface.getInetAddresses(); enumIpAddr
+                            .hasMoreElements(); ) {
+                        InetAddress inetAddress = enumIpAddr.nextElement();
+                        if (!inetAddress.isLoopbackAddress() && inetAddress.getHostAddress().length() < 18
+                                && inetAddress.isSiteLocalAddress()) {
+                            ipAddress = inetAddress.getHostAddress();
+                        }
                     }
                 }
+            } catch (SocketException ignored) {
             }
-        } catch (SocketException ignored) {
+        } else {
+            NetworkDescription networkDescription = getNetworkDescription();
+            String inet = networkDescription.getInet();
+            if (StringUtils.isNotEmpty(inet) && !"127.0.0.1".equals(inet)) {
+                ipAddress = inet;
+            }
         }
+
         return ipAddress;
     }
 
@@ -197,7 +203,13 @@ public interface NetworkHardwareRepository {
     void generateSSHKeys();
 
     default NetworkDescription getNetworkDescription() {
-        return !SystemUtils.IS_OS_LINUX ? null : getNetworkDescription(getActiveNetworkInterface());
+        if (!SystemUtils.IS_OS_WINDOWS) {
+            String activeNetworkInterface = getActiveNetworkInterface();
+            if (StringUtils.isNotEmpty(activeNetworkInterface)) {
+                return getNetworkDescription(activeNetworkInterface);
+            }
+        }
+        return null;
     }
 
     @Getter

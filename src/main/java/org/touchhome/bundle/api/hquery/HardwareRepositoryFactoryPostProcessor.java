@@ -456,8 +456,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     private Object handleBucket(List<String> inputs, RawParse rawParse, Field field) {
-        return SystemUtils.IS_OS_LINUX ? newInstance(rawParse.nix()).handle(inputs, field) :
-                newInstance(rawParse.win()).handle(inputs, field);
+        return SystemUtils.IS_OS_WINDOWS ? newInstance(rawParse.win()).handle(inputs, field) :
+                newInstance(rawParse.nix()).handle(inputs, field);
     }
 
     private Object handleType(String value, Class<?> type) {

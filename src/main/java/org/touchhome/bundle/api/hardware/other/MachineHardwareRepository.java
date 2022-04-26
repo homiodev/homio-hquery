@@ -25,6 +25,9 @@ public interface MachineHardwareRepository {
     @HardwareQuery(name = "Get cpu load", value = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'")
     String getCpuLoad();
 
+    @HardwareQuery(name = "Get cpu temperature", value = "/opt/vc/bin/vcgencmd measure_temp")
+    String getCpuTemperature();
+
     @HardwareQuery(name = "Get memory", value = "free -m | awk 'NR==2{printf \"%s/%sMB\", $3,$2 }'")
     String getMemory();
 
@@ -70,6 +73,6 @@ public interface MachineHardwareRepository {
     boolean isSoftwareInstalled(@HQueryParam("soft") String soft);
 
     default String getDeviceModel() {
-        return SystemUtils.IS_OS_LINUX ? catDeviceModel() : SystemUtils.OS_NAME;
+        return SystemUtils.IS_OS_WINDOWS ? SystemUtils.OS_NAME : catDeviceModel();
     }
 }
