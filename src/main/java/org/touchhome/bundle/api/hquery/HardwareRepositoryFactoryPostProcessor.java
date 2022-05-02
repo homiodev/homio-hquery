@@ -256,9 +256,11 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 processCache.errors.add(getErrorMessage(ex));
             } finally {
                 if (errorFuture != null) {
+                    inputFuture.get(100, TimeUnit.MILLISECONDS);
                     errorFuture.cancel(true);
                 }
                 if (inputFuture != null) {
+                    inputFuture.get(100, TimeUnit.MILLISECONDS);
                     inputFuture.cancel(true);
                 }
                 if (processCache.errors.isEmpty() && hardwareQuery.cacheValid() > 0) {

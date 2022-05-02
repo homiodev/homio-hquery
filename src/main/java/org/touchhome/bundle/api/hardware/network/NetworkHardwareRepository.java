@@ -143,7 +143,7 @@ public interface NetworkHardwareRepository {
 
     @SneakyThrows
     default String getIPAddress() {
-        String ipAddress = null;
+        String address = null;
         if (SystemUtils.IS_OS_WINDOWS) {
             try {
                 for (Enumeration<NetworkInterface> enumNetworks = NetworkInterface.getNetworkInterfaces(); enumNetworks
@@ -154,21 +154,28 @@ public interface NetworkHardwareRepository {
                         InetAddress inetAddress = enumIpAddr.nextElement();
                         if (!inetAddress.isLoopbackAddress() && inetAddress.getHostAddress().length() < 18
                                 && inetAddress.isSiteLocalAddress()) {
-                            ipAddress = inetAddress.getHostAddress();
+                            address = inetAddress.getHostAddress();
                         }
                     }
                 }
             } catch (SocketException ignored) {
             }
         } else {
-            NetworkDescription networkDescription = getNetworkDescription();
-            String inet = networkDescription.getInet();
+            String inet = getNetworkDescription().map(NetworkDescription::getInet).orElse(null);
             if (StringUtils.isNotEmpty(inet) && !"127.0.0.1".equals(inet)) {
-                ipAddress = inet;
+                address = inet;
             }
         }
 
-        return ipAddress;
+        return address;
+    }
+    @SneakyThrows
+    default String getMacAddress() {
+        if (SystemUtils.IS_OS_LINUX) {
+            return getNetworkDescription().map(NetworkDescription::getMac).orElse(null);
+        }
+
+        return null;
     }
 
     @SneakyThrows
@@ -202,14 +209,14 @@ public interface NetworkHardwareRepository {
     @HardwareQuery(name = "Generate ssh keys", value = "cat /dev/zero | ssh-keygen -q -N \"\"")
     void generateSSHKeys();
 
-    default NetworkDescription getNetworkDescription() {
+    default Optional<NetworkDescription> getNetworkDescription() {
         if (!SystemUtils.IS_OS_WINDOWS) {
             String activeNetworkInterface = getActiveNetworkInterface();
             if (StringUtils.isNotEmpty(activeNetworkInterface)) {
-                return getNetworkDescription(activeNetworkInterface);
+                return Optional.ofNullable(getNetworkDescription(activeNetworkInterface));
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     @Getter
