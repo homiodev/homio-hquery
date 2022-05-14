@@ -14,7 +14,6 @@ import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 import org.touchhome.bundle.api.hquery.api.*;
 
 import java.io.StringWriter;
-import java.lang.reflect.Field;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -24,8 +23,6 @@ import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @HardwareRepositoryAnnotation(stringValueOnDisable = "N/A")
 public interface NetworkHardwareRepository {
@@ -78,10 +75,6 @@ public interface NetworkHardwareRepository {
     @HardwareQuery(name = "Get wifi password", value = "grep -r 'psk=' /etc/wpa_supplicant/wpa_supplicant.conf | cut -d = -f 2 | cut -d \\\" -f 2")
     String getWifiPassword();
 
-    @HardwareQuery(name = "Get gateway ip address", value = "netstat -nr", win = "netstat -nr", cacheValid = 3600, ignoreOnError = true, valueOnError = "n/a")
-    @RawParse(nix = NetStatGatewayParser.class, win = NetStatGatewayParser.class)
-    String getGatewayIpAddress();
-
     @CurlQuery(value = "http://checkip.amazonaws.com", cacheValid = 3600, ignoreOnError = true,
             mapping = TrimEndMapping.class, valueOnError = "127.0.0.1")
     String getOuterIpAddress();
@@ -104,20 +97,24 @@ public interface NetworkHardwareRepository {
         return cityGeolocation;
     }
 
-    default Map<String, Callable<Integer>> buildPingIpAddressTasks(Logger log, Set<Integer> ports, int timeout, BiConsumer<String, Integer> handler) {
-        String gatewayIpAddress = getGatewayIpAddress();
-        if (gatewayIpAddress == null) {
-            throw new IllegalStateException("Unable to proceed due ip address not found. Please check you connected to Router");
+    default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Logger log, Set<Integer> ports, int timeout, BiConsumer<String, Integer> handler) {
+        if (pinIpAddressRange == null) {
+            throw new IllegalArgumentException("Unable to proceed due ip address not found. Please check you connected to Router");
+        }
+        if (!Pattern.compile(NetworkDescription.IP_RANGE_PATTERN).matcher(pinIpAddressRange).matches()) {
+            throw new IllegalArgumentException("Address not match patter xxx.xxx.xxx-xxx");
         }
         Map<String, Callable<Integer>> tasks = new HashMap<>();
-        String scanIp = gatewayIpAddress.substring(0, gatewayIpAddress.lastIndexOf(".") + 1);
+        String[] parts = pinIpAddressRange.split("-");
+        String[] ipParts = parts[0].split("\\.");
+        String ipPrefix = parts[0].substring(0, parts[0].lastIndexOf(".") + 1);
 
         for (Integer port : ports) {
-            log.info("Checking ip address {}:{}", gatewayIpAddress, port);
-            for (int i = 0; i < 255; i++) {
+            log.info("Checking ip address {}:{}", pinIpAddressRange, port);
+            for (int i = Integer.parseInt(ipParts[3]); i < Integer.parseInt(parts[1]); i++) {
                 int ipSuffix = i;
                 tasks.put("check-ip-" + ipSuffix + "-port-" + port, () -> {
-                    String ipAddress = scanIp + ipSuffix;
+                    String ipAddress = ipPrefix + ipSuffix;
                     log.debug("Check ip: {}:{}", ipAddress, port);
                     if (pingAddress(ipAddress, port, timeout)) {
                         handler.accept(ipAddress, port);
@@ -169,6 +166,7 @@ public interface NetworkHardwareRepository {
 
         return address;
     }
+
     @SneakyThrows
     default String getMacAddress() {
         if (SystemUtils.IS_OS_LINUX) {
@@ -228,21 +226,6 @@ public interface NetworkHardwareRepository {
         @Setter
         private static class Error {
             private String description;
-        }
-    }
-
-    class NetStatGatewayParser implements RawParse.RawParseHandler {
-
-        @Override
-        public Object handle(List<String> inputs, Field field) {
-            String ipString = inputs.stream().filter(i -> i.contains("0.0.0.0")).findAny().orElse(null);
-            if (ipString != null) {
-                List<String> list = Stream.of(ipString.split(" ")).filter(s -> !s.isEmpty()).collect(Collectors.toList());
-                if (Pattern.compile("^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\\.(?!$)|$)){4}$").matcher(list.get(2)).matches()) {
-                    return list.get(2);
-                }
-            }
-            return null;
         }
     }
 

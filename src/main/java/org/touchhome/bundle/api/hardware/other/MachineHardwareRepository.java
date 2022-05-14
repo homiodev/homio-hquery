@@ -5,6 +5,7 @@ import org.touchhome.bundle.api.hquery.api.HQueryMaxWaitTimeout;
 import org.touchhome.bundle.api.hquery.api.HQueryParam;
 import org.touchhome.bundle.api.hquery.api.HardwareQuery;
 import org.touchhome.bundle.api.hquery.api.HardwareRepositoryAnnotation;
+import org.touchhome.common.model.ProgressBar;
 
 import java.nio.file.Path;
 
@@ -15,13 +16,14 @@ public interface MachineHardwareRepository {
     String execute(@HQueryParam("command") String command);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
+    String execute(@HQueryParam("command") String command, ProgressBar progressBar);
+
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String executeEcho(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
-
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String executeEcho(@HQueryParam("command") String command);
+    String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
+                   ProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", maxSecondsTimeout = Integer.MAX_VALUE)
     String executeInfinite(@HQueryParam("command") String command);
@@ -61,6 +63,9 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout);
+
+    @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
+    void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout, ProgressBar progressBar);
 
     @HardwareQuery(name = "Enable systemctl", value = "systemctl enable :soft", printOutput = true)
     void enableSystemCtl(@HQueryParam("soft") String soft);

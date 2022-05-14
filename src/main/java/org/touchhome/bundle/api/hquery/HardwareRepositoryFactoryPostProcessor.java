@@ -32,6 +32,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpMessageConverterExtractor;
 import org.springframework.web.client.RestTemplate;
 import org.touchhome.bundle.api.hquery.api.*;
+import org.touchhome.common.model.ProgressBar;
 
 import java.io.*;
 import java.lang.annotation.Annotation;
@@ -191,7 +192,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             for (int i = 0; i < args.length; i++) {
                 String regexp = null;
                 Object arg = args[i];
-                if (apiParams.length > i && apiParams[i][0] instanceof HQueryParam) {
+                if (isParamHasAnnotation(apiParams, i, HQueryParam.class)) {
                     regexp = ((HQueryParam) apiParams[i][0]).value();
                 }
 
@@ -210,6 +211,9 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         List<String> parts = new ArrayList<>();
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
+        ProgressBar progressBar = args == null || args.length == 0 ? null :
+                Stream.of(args).filter(arg -> arg instanceof ProgressBar)
+                        .map(arg -> (ProgressBar) arg).findAny().orElse(null);
 
         String[] values = hQueryExecutor.getValues(hardwareQuery);
         Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
@@ -242,10 +246,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
                 String errorStreamName = hardwareQuery.name() + " / error stream reader";
                 errorFuture = hardwareRepositoryThreadPool.submit(errorStreamName, new LinesReader(errorStreamName,
-                        processCache.errors, process.getErrorStream(), hardwareQuery.printOutput() ? Level.WARN : Level.TRACE));
+                        processCache.errors, process.getErrorStream(),
+                        hardwareQuery.printOutput() ? Level.WARN : Level.TRACE, progressBar));
                 String inputStreamName = hardwareQuery.name() + " / input stream reader";
                 inputFuture = hardwareRepositoryThreadPool.submit(inputStreamName, new LinesReader(inputStreamName,
-                        processCache.inputs, process.getInputStream(), hardwareQuery.printOutput() ? Level.INFO : Level.TRACE));
+                        processCache.inputs, process.getInputStream(),
+                        hardwareQuery.printOutput() ? Level.INFO : Level.TRACE, progressBar));
 
                 if (!process.waitFor(maxWaitTimeout, TimeUnit.SECONDS)) {
                     process.destroy();
@@ -256,10 +262,17 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 processCache.errors.add(getErrorMessage(ex));
             } finally {
                 if (errorFuture != null) {
-                    inputFuture.get(100, TimeUnit.MILLISECONDS);
+                    try {
+                        errorFuture.get(100, TimeUnit.MILLISECONDS);
+                    } catch (Exception ignore) {
+                    }
                     errorFuture.cancel(true);
                 }
                 if (inputFuture != null) {
+                    try {
+                        inputFuture.get(100, TimeUnit.MILLISECONDS);
+                    } catch (Exception ignore) {
+                    }
                     inputFuture.get(100, TimeUnit.MILLISECONDS);
                     inputFuture.cancel(true);
                 }
@@ -275,7 +288,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private int getMaxWaitTimeout(HardwareQuery hardwareQuery, Object[] args, Method method) {
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         for (int i = 0; i < parameterAnnotations.length; i++) {
-            if (parameterAnnotations[i][0] instanceof HQueryMaxWaitTimeout) {
+            if (isParamHasAnnotation(parameterAnnotations, i, HQueryMaxWaitTimeout.class)) {
                 return (int) args[i];
             }
         }
@@ -542,13 +555,22 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         Future<?> submit(String name, Runnable runnable);
     }
 
-    @RequiredArgsConstructor
     private static class LinesReader implements Runnable {
 
         private final String name;
         private final List<String> output;
         private final InputStream inputStream;
         private final Level logLevel;
+        private final ProgressBar progressBar;
+
+        public LinesReader(String name, List<String> output, InputStream inputStream, Level logLevel, ProgressBar progressBar) {
+            this.name = name;
+            this.output = output;
+            this.inputStream = inputStream;
+            this.logLevel = logLevel;
+            this.progressBar = progressBar != null ? progressBar : (progress, message) -> {
+            };
+        }
 
         @Override
         public void run() {
@@ -558,6 +580,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 while ((line = reader.readLine()) != null) {
                     log.log(logLevel, line);
                     output.add(line);
+                    progressBar.progress(-1, line);
                 }
             } catch (IOException ex) {
                 log.warn("Thread reader <{}> got error: <{}>", name, ex.getMessage());
@@ -690,5 +713,10 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         }
 
         return StringUtils.defaultString(cause.getMessage(), cause.toString());
+    }
+
+    private boolean isParamHasAnnotation(Annotation[][] apiParams, int i, Class<? extends Annotation> aClass) {
+        return apiParams.length > i && apiParams[i] != null && apiParams[i].length > 0
+                && aClass.isAssignableFrom(apiParams[i][0].getClass());
     }
 }
