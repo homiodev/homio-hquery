@@ -1,6 +1,6 @@
-package org.touchhome.bundle.api.hquery;
+package org.touchhome.bundle.hquery;
 
-import org.touchhome.bundle.api.hquery.api.HardwareQuery;
+import org.touchhome.bundle.hquery.api.HardwareQuery;
 
 import java.io.File;
 

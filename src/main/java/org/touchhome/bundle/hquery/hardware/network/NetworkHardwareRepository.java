@@ -1,4 +1,4 @@
-package org.touchhome.bundle.api.hardware.network;
+package org.touchhome.bundle.hquery.hardware.network;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
@@ -11,7 +11,7 @@ import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.templatemode.TemplateMode;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
-import org.touchhome.bundle.api.hquery.api.*;
+import org.touchhome.bundle.hquery.api.*;
 
 import java.io.StringWriter;
 import java.net.*;
@@ -26,6 +26,10 @@ import java.util.regex.Pattern;
 
 @HardwareRepositoryAnnotation(stringValueOnDisable = "N/A")
 public interface NetworkHardwareRepository {
+
+    @HardwareQuery(name = "Get wifi name", value = "iwgetid -r", printOutput = true)
+    String getWifiName();
+
     @HardwareQuery(name = "Switch hotspot", value = "autohotspot swipe", printOutput = true)
     void switchHotSpot();
 
@@ -33,8 +37,10 @@ public interface NetworkHardwareRepository {
     @ErrorsHandler(onRetCodeError = "Got some major errors from our scan command",
             notRecognizeError = "Got some errors from our scan command",
             errorHandlers = {
-                    @ErrorsHandler.ErrorHandler(onError = "Device or resource busy", throwError = "Scans are overlapping; slow down putToCache frequency"),
-                    @ErrorsHandler.ErrorHandler(onError = "Allocation failed", throwError = "Too many networks for iwlist to handle")
+                    @ErrorsHandler.ErrorHandler(onError = "Device or resource busy",
+                            throwError = "Scans are overlapping; slow down putToCache frequency"),
+                    @ErrorsHandler.ErrorHandler(onError = "Allocation failed",
+                            throwError = "Too many networks for iwlist to handle")
             })
     @ListParse(delimiter = ".*Cell \\d\\d.*", clazz = Network.class)
     List<Network> scan(@HQueryParam("iface") String iface);
@@ -44,7 +50,8 @@ public interface NetworkHardwareRepository {
     NetworkStat stat(@HQueryParam("iface") String iface);
 
     @HardwareQuery(name = "Disable network", value = "ifconfig :iface down")
-    @ErrorsHandler(onRetCodeError = "There was an unknown error disabling the interface", notRecognizeError = "There was an error disabling the interface")
+    @ErrorsHandler(onRetCodeError = "There was an unknown error disabling the interface",
+            notRecognizeError = "There was an error disabling the interface")
     void disable(@HQueryParam("iface") String iface);
 
     @HardwareQuery(name = "Restart network interface", value = "wpa_cli -i :iface reconfigure", printOutput = true)
@@ -55,16 +62,21 @@ public interface NetworkHardwareRepository {
             notRecognizeError = "There was an error enabling the interface",
             errorHandlers = {
                     @ErrorsHandler.ErrorHandler(onError = "No such device", throwError = "The interface :iface does not exist."),
-                    @ErrorsHandler.ErrorHandler(onError = "Allocation failed", throwError = "Too many networks for iwlist to handle")
+                    @ErrorsHandler.ErrorHandler(onError = "Allocation failed",
+                            throwError = "Too many networks for iwlist to handle")
             })
     void enable(@HQueryParam("iface") String iface);
 
     @HardwareQuery(name = "Connect wep", value = "iwconfig :iface essid ':essid' key :PASSWORD")
-    void connect_wep(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid, @HQueryParam("password") String password);
+    void connect_wep(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid,
+                     @HQueryParam("password") String password);
 
     @ErrorsHandler(onRetCodeError = "Shit is broken TODO")
-    @HardwareQuery(name = "Connect wpa", value = "wpa_passphrase ':essid' ':password' > wpa-temp.conf && wpa_supplicant -D wext -i :iface -c wpa-temp.conf && rm wpa-temp.conf")
-    void connect_wpa(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid, @HQueryParam("password") String password);
+    @HardwareQuery(name = "Connect wpa",
+            value = "wpa_passphrase ':essid' ':password' > wpa-temp.conf && wpa_supplicant -D wext -i :iface -c wpa-temp.conf " +
+                    "&& rm wpa-temp.conf")
+    void connect_wpa(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid,
+                     @HQueryParam("password") String password);
 
     @HardwareQuery(name = "Connect open", value = "iwconfig :iface essid ':essid'")
     void connect_open(@HQueryParam("iface") String iface, @HQueryParam("essid") String essid);
@@ -72,7 +84,8 @@ public interface NetworkHardwareRepository {
     @HardwareQuery(name = "Get network description", value = "ifconfig :iface", ignoreOnError = true)
     NetworkDescription getNetworkDescription(@HQueryParam("iface") String iface);
 
-    @HardwareQuery(name = "Get wifi password", value = "grep -r 'psk=' /etc/wpa_supplicant/wpa_supplicant.conf | cut -d = -f 2 | cut -d \\\" -f 2")
+    @HardwareQuery(name = "Get wifi password",
+            value = "grep -r 'psk=' /etc/wpa_supplicant/wpa_supplicant.conf | cut -d = -f 2 | cut -d \\\" -f 2")
     String getWifiPassword();
 
     @CurlQuery(value = "http://checkip.amazonaws.com", cacheValid = 3600, ignoreOnError = true,
@@ -97,9 +110,11 @@ public interface NetworkHardwareRepository {
         return cityGeolocation;
     }
 
-    default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Logger log, Set<Integer> ports, int timeout, BiConsumer<String, Integer> handler) {
+    default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Logger log, Set<Integer> ports,
+                                                                   int timeout, BiConsumer<String, Integer> handler) {
         if (pinIpAddressRange == null) {
-            throw new IllegalArgumentException("Unable to proceed due ip address not found. Please check you connected to Router");
+            throw new IllegalArgumentException(
+                    "Unable to proceed due ip address not found. Please check you connected to Router");
         }
         if (!Pattern.compile(NetworkDescription.IP_RANGE_PATTERN).matcher(pinIpAddressRange).matches()) {
             throw new IllegalArgumentException("Address not match patter xxx.xxx.xxx-xxx");
@@ -110,7 +125,6 @@ public interface NetworkHardwareRepository {
         String ipPrefix = parts[0].substring(0, parts[0].lastIndexOf(".") + 1);
 
         for (Integer port : ports) {
-            log.info("Checking ip address {}:{}", pinIpAddressRange, port);
             for (int i = Integer.parseInt(ipParts[3]); i < Integer.parseInt(parts[1]); i++) {
                 int ipSuffix = i;
                 tasks.put("check-ip-" + ipSuffix + "-port-" + port, () -> {
@@ -171,9 +185,16 @@ public interface NetworkHardwareRepository {
     default String getMacAddress() {
         if (SystemUtils.IS_OS_LINUX) {
             return getNetworkDescription().map(NetworkDescription::getMac).orElse(null);
-        }
+        } else {
+            InetAddress localHost = InetAddress.getLocalHost(); NetworkInterface ni = NetworkInterface.getByInetAddress(localHost);
+            byte[] hardwareAddress = ni.getHardwareAddress();
 
-        return null;
+            String[] hexadecimal = new String[hardwareAddress.length];
+            for (int i = 0; i < hardwareAddress.length; i++) {
+                hexadecimal[i] = String.format("%02X", hardwareAddress[i]);
+            }
+            return String.join("-", hexadecimal);
+        }
     }
 
     @SneakyThrows

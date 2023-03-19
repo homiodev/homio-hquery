@@ -1,4 +1,4 @@
-package org.touchhome.bundle.api.hquery;
+package org.touchhome.bundle.hquery;
 
 import com.pivovarit.function.ThrowingBiFunction;
 import lombok.RequiredArgsConstructor;
@@ -31,10 +31,11 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpMessageConverterExtractor;
 import org.springframework.web.client.RestTemplate;
-import org.touchhome.bundle.api.hquery.api.*;
-import org.touchhome.common.model.ProgressBar;
+import org.touchhome.bundle.hquery.api.*;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
@@ -47,6 +48,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -100,44 +102,46 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         HQueryExecutor hQueryExecutor = beanFactory.getBean(HQueryExecutor.class);
         List<Class<?>> classes = getClassesWithAnnotation();
         for (Class<?> aClass : classes) {
-            beanFactory.registerSingleton(aClass.getSimpleName(), Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
-                if (method.getName().equals("toString")) {
-                    return aClass.getSimpleName() + ":" + aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class).description();
-                }
-                Class<?> returnType = method.getReturnType();
-                List<Object> results = null;
-                for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
-                    if (results == null) {
-                        results = new ArrayList<>();
-                    }
-                    results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
-                }
-                Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
-                if (value.isPresent()) {
-                    return value.get().get();
-                }
-                if (results != null) {
-                    if (results.isEmpty()) {
-                        return null;
-                    } else if (results.size() == 1) {
-                        return results.iterator().next();
-                    } else if (returnType.isAssignableFrom(List.class)) {
-                        return results;
-                    } else {
-                        return null;
-                    }
-                }
+            beanFactory.registerSingleton(aClass.getSimpleName(),
+                    Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
+                        if (method.getName().equals("toString")) {
+                            return aClass.getSimpleName() + ":" +
+                                    aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class).description();
+                        }
+                        Class<?> returnType = method.getReturnType();
+                        List<Object> results = null;
+                        for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
+                            if (results == null) {
+                                results = new ArrayList<>();
+                            }
+                            results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
+                        }
+                        Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
+                        if (value.isPresent()) {
+                            return value.get().get();
+                        }
+                        if (results != null) {
+                            if (results.isEmpty()) {
+                                return null;
+                            } else if (results.size() == 1) {
+                                return results.iterator().next();
+                            } else if (returnType.isAssignableFrom(List.class)) {
+                                return results;
+                            } else {
+                                return null;
+                            }
+                        }
 
-                if (method.isDefault()) {
-                    // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
-                    return lookupConstructor.newInstance(aClass)
-                            .in(aClass)
-                            .unreflectSpecial(method, aClass)
-                            .bindTo(proxy)
-                            .invokeWithArguments(args);
-                }
-                throw new RuntimeException("Unable to execute hardware method without implementation");
-            }));
+                        if (method.isDefault()) {
+                            // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
+                            return lookupConstructor.newInstance(aClass)
+                                    .in(aClass)
+                                    .unreflectSpecial(method, aClass)
+                                    .bindTo(proxy)
+                                    .invokeWithArguments(args);
+                        }
+                        throw new RuntimeException("Unable to execute hardware method without implementation");
+                    }));
         }
         if (this.handler != null) {
             this.handler.accept(beanFactory);
@@ -153,7 +157,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
             if ((curlQuery.cache() || curlQuery.cacheValid() > 0)
                     && cache.containsKey(command)
-                    && (curlQuery.cacheValid() < 1 || (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
+                    && (curlQuery.cacheValid() < 1 ||
+                    (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
                 processCache = cache.get(command);
             } else {
                 processCache = new ProcessCache(curlQuery.cacheValid());
@@ -207,13 +212,14 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     @SneakyThrows
-    private Object handleHardwareQuery(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env, Class<?> aClass, HQueryExecutor hQueryExecutor) {
+    private Object handleHardwareQuery(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env,
+                                       Class<?> aClass, HQueryExecutor hQueryExecutor) {
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         List<String> parts = new ArrayList<>();
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
-        ProgressBar progressBar = args == null || args.length == 0 ? null :
-                Stream.of(args).filter(arg -> arg instanceof ProgressBar)
-                        .map(arg -> (ProgressBar) arg).findAny().orElse(null);
+        BiConsumer<Integer, String> progressBar = args == null || args.length == 0 ? null :
+                Stream.of(args).filter(arg -> arg instanceof BiConsumer)
+                        .map(arg -> (BiConsumer) arg).findAny().orElse(null);
 
         String[] values = hQueryExecutor.getValues(hardwareQuery);
         Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
@@ -228,7 +234,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         String command = String.join(", ", parts);
         ProcessCache processCache;
         if (hardwareQuery.cacheValid() > 0 && cache.containsKey(command)
-                && (hardwareQuery.cacheValid() < 1 || (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
+                && (hardwareQuery.cacheValid() < 1 ||
+                (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
             processCache = cache.get(command);
         } else {
             processCache = new ProcessCache(hardwareQuery.cacheValid());
@@ -246,12 +253,16 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
                 String errorStreamName = hardwareQuery.name() + " / error stream reader";
                 errorFuture = hardwareRepositoryThreadPool.submit(errorStreamName, new LinesReader(errorStreamName,
-                        processCache.errors, process.getErrorStream(),
-                        hardwareQuery.printOutput() ? Level.WARN : Level.TRACE, progressBar));
+                        process.getErrorStream(), progressBar, message -> {
+                    processCache.errors.add(message);
+                    log.log(hardwareQuery.printOutput() ? Level.WARN : Level.TRACE, message);
+                }));
                 String inputStreamName = hardwareQuery.name() + " / input stream reader";
                 inputFuture = hardwareRepositoryThreadPool.submit(inputStreamName, new LinesReader(inputStreamName,
-                        processCache.inputs, process.getInputStream(),
-                        hardwareQuery.printOutput() ? Level.INFO : Level.TRACE, progressBar));
+                        process.getInputStream(), progressBar, message -> {
+                    processCache.inputs.add(message);
+                    log.log(hardwareQuery.printOutput() ? Level.INFO : Level.TRACE, message);
+                }));
 
                 if (!process.waitFor(maxWaitTimeout, TimeUnit.SECONDS)) {
                     process.destroy();
@@ -273,7 +284,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                         inputFuture.get(100, TimeUnit.MILLISECONDS);
                     } catch (Exception ignore) {
                     }
-                    inputFuture.get(100, TimeUnit.MILLISECONDS);
                     inputFuture.cancel(true);
                 }
                 if (processCache.errors.isEmpty() && hardwareQuery.cacheValid() > 0) {
@@ -282,7 +292,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             }
         }
 
-        return handleCommandResult(hardwareQuery, method, errorsHandler, command, processCache.retValue, processCache.inputs, processCache.errors);
+        return handleCommandResult(hardwareQuery, method, errorsHandler, command, processCache.retValue, processCache.inputs,
+                processCache.errors);
     }
 
     private int getMaxWaitTimeout(HardwareQuery hardwareQuery, Object[] args, Method method) {
@@ -298,7 +309,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private Object returnOnDisableValue(Method method, Class<?> aClass) {
         // in case we expect return num we ignore any errors
         Class<?> returnType = method.getReturnType();
-        HardwareRepositoryAnnotation hardwareRepositoryAnnotation = aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class);
+        HardwareRepositoryAnnotation hardwareRepositoryAnnotation =
+                aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class);
         if (returnType.isPrimitive()) {
             switch (returnType.getName()) {
                 case "int":
@@ -315,7 +327,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private Object handleCommandResult(HardwareQuery hardwareQuery, Method method, ErrorsHandler errorsHandler,
                                        String command, int retValue,
-                                       List<String> inputs, List<String> errors) throws IllegalAccessException, InstantiationException {
+                                       List<String> inputs, List<String> errors)
+            throws IllegalAccessException, InstantiationException {
         Class<?> returnType = method.getReturnType();
 
         // in case we expect return num we ignore any errors
@@ -339,7 +352,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                     throw new IllegalStateException(error);
                 }
             } else {
-                log.error("Error while execute command <{}>. Code: <{}>, Msg: <{}>", command, retValue, String.join(", ", errors));
+                log.error("Error while execute command <{}>. Code: <{}>, Msg: <{}>", command, retValue,
+                        String.join(", ", errors));
                 if (!hardwareQuery.ignoreOnError()) {
                     throw new HardwareException(errors, inputs, retValue);
                 } else if (!hardwareQuery.valueOnError().isEmpty()) {
@@ -455,7 +469,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             }
         }
 
-        return obj;
+        return input;
     }
 
     private Object handleBucket(List<String> inputs, ListParse.LineParse lineParse, Field field) {
@@ -477,7 +491,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private Object handleType(String value, Class<?> type) {
         if (type.isAssignableFrom(Integer.class)) {
-            return new Integer(value);
+            return Integer.valueOf(value);
         } else if (type.isAssignableFrom(Double.class)) {
             return new Double(value);
         }
@@ -555,41 +569,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         Future<?> submit(String name, Runnable runnable);
     }
 
-    private static class LinesReader implements Runnable {
-
-        private final String name;
-        private final List<String> output;
-        private final InputStream inputStream;
-        private final Level logLevel;
-        private final ProgressBar progressBar;
-
-        public LinesReader(String name, List<String> output, InputStream inputStream, Level logLevel, ProgressBar progressBar) {
-            this.name = name;
-            this.output = output;
-            this.inputStream = inputStream;
-            this.logLevel = logLevel;
-            this.progressBar = progressBar != null ? progressBar : (progress, message) -> {
-            };
-        }
-
-        @Override
-        public void run() {
-            log.debug("Thread reader started: " + name);
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.log(logLevel, line);
-                    output.add(line);
-                    progressBar.progress(-1, line);
-                }
-            } catch (IOException ex) {
-                log.warn("Thread reader <{}> got error: <{}>", name, ex.getMessage());
-                throw new RuntimeException(ex);
-            }
-            log.debug("Thread reader done: " + name);
-        }
-    }
-
     @RequiredArgsConstructor
     private static class ProcessCache {
         final int cacheValidInSec;
@@ -604,7 +583,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return replaceValues(ENV_PATTERN, text, propertyGetter);
     }
 
-    private static String replaceValues(Pattern pattern, String text, ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
+    private static String replaceValues(Pattern pattern, String text,
+                                        ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
         Matcher matcher = pattern.matcher(text);
         StringBuffer noteBuffer = new StringBuffer();
         while (matcher.find()) {
@@ -660,7 +640,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     @SneakyThrows
     private static <T> T getWithTimeout(@NotNull String command, @NotNull Class<T> returnType, int timeoutInSec) {
         CloseableHttpResponse response = createApacheHttpClient(timeoutInSec).execute(new HttpGet(command));
-        HttpMessageConverterExtractor<T> responseExtractor = new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
+        HttpMessageConverterExtractor<T> responseExtractor =
+                new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
         return responseExtractor.extractData(new ClientHttpResponse() {
             @Override
             public HttpStatus getStatusCode() {

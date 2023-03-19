@@ -1,4 +1,4 @@
-package org.touchhome.bundle.api.hquery;
+package org.touchhome.bundle.hquery;
 
 import lombok.SneakyThrows;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,7 +7,7 @@ import org.springframework.context.annotation.*;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.core.type.AnnotationMetadata;
-import org.touchhome.bundle.api.hquery.api.HardwareQuery;
+import org.touchhome.bundle.hquery.api.HardwareQuery;
 
 import java.io.File;
 

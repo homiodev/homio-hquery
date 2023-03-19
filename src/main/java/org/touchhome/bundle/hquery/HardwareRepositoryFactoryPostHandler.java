@@ -1,4 +1,4 @@
-package org.touchhome.bundle.api.hquery;
+package org.touchhome.bundle.hquery;
 
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 

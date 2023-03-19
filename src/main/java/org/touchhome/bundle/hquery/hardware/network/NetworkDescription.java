@@ -1,10 +1,10 @@
-package org.touchhome.bundle.api.hardware.network;
+package org.touchhome.bundle.hquery.hardware.network;
 
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-import org.touchhome.bundle.api.hquery.api.ListParse;
+import org.touchhome.bundle.hquery.api.ListParse;
 
 @Getter
 @Setter

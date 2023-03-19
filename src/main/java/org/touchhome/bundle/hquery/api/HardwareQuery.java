@@ -1,4 +1,4 @@
-package org.touchhome.bundle.api.hquery.api;
+package org.touchhome.bundle.hquery.api;
 
 import java.lang.annotation.*;
 

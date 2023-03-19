@@ -1,9 +1,9 @@
-package org.touchhome.bundle.api.hardware.other;
+package org.touchhome.bundle.hquery.hardware.other;
 
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
-import org.touchhome.bundle.api.hquery.api.ListParse;
+import org.touchhome.bundle.hquery.api.ListParse;
 
 @Getter
 @ToString

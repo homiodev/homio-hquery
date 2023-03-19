@@ -1,6 +1,6 @@
-package org.touchhome.bundle.api.hardware.other;
+package org.touchhome.bundle.hquery.hardware.other;
 
-import org.touchhome.bundle.api.hquery.api.SplitParse;
+import org.touchhome.bundle.hquery.api.SplitParse;
 
 @SplitParse("\\s+")
 public class HardwareMemory {
