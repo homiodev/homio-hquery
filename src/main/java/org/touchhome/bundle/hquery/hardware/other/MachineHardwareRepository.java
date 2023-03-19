@@ -21,23 +21,23 @@ public interface MachineHardwareRepository {
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
             ignoreOnError = true, redirectErrorsToInputs = true)
     String executeNoErrorThrow(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                               @Nullable BiConsumer<Integer, String> progressBar);
+                               @Nullable BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
             ignoreOnError = true, redirectErrorsToInputs = true)
     ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") @NotNull String command,
                                               @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                                              @Nullable BiConsumer<Integer, String> progressBar);
+                                              @Nullable BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command, @Nullable BiConsumer<Integer, String> progressBar);
+    String execute(@HQueryParam("command") @NotNull String command, @Nullable BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                   BiConsumer<Integer, String> progressBar);
+                   BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", maxSecondsTimeout = Integer.MAX_VALUE)
     String executeInfinite(@HQueryParam("command") @NotNull String command);
@@ -81,7 +81,7 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                         BiConsumer<Integer, String> progressBar);
+                         BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
     void enableSystemCtl(@HQueryParam("soft") @NotNull String soft);

@@ -15,9 +15,9 @@ public class LinesReader implements Runnable {
     private final String name;
     private final InputStream inputStream;
     private final Consumer<String> lineConsumer;
-    private final BiConsumer<Integer, String> progressBar;
+    private final BiConsumer<Double, String> progressBar;
 
-    public LinesReader(@NotNull String name, @NotNull InputStream inputStream, @Nullable BiConsumer<Integer, String> progressBar,
+    public LinesReader(@NotNull String name, @NotNull InputStream inputStream, @Nullable BiConsumer<Double, String> progressBar,
                        @NotNull Consumer<String> lineConsumer) {
         this.name = name;
         this.inputStream = inputStream;
@@ -32,7 +32,7 @@ public class LinesReader implements Runnable {
             String line;
             while ((line = reader.readLine()) != null) {
                 lineConsumer.accept(line);
-                progressBar.accept(-1, line);
+                progressBar.accept(-1D, line);
             }
         } catch (IOException ex) {
             lineConsumer.accept("Thread reader <" + name + "> got error: <" + ex.getMessage() + ">");

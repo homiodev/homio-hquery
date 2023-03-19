@@ -217,7 +217,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         List<String> parts = new ArrayList<>();
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
-        BiConsumer<Integer, String> progressBar = args == null || args.length == 0 ? null :
+        BiConsumer<Double, String> progressBar = args == null || args.length == 0 ? null :
                 Stream.of(args).filter(arg -> arg instanceof BiConsumer)
                         .map(arg -> (BiConsumer) arg).findAny().orElse(null);
 
