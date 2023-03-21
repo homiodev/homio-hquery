@@ -16,13 +16,6 @@
 
     <artifactId>touchhome-hquery</artifactId>
 
-    <scm>
-        <url>https://github.com/touchhome/${project.artifactId}</url>
-        <connection>scm:git:git://github.com/github.com/touchhome/${project.artifactId}.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/touchhome/${project.artifactId}.git</developerConnection>
-        <tag>HEAD</tag>
-    </scm>
-
     <build>
         <resources>
             <resource>
