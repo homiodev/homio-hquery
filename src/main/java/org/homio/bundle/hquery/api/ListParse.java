@@ -1,4 +1,4 @@
-package org.touchhome.bundle.hquery.api;
+package org.homio.bundle.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -8,6 +8,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface ListParse {
+
     String delimiter();
 
     Class<?> clazz();
@@ -15,6 +16,7 @@ public @interface ListParse {
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD})
     @interface LineParse {
+
         String value();
 
         int group() default 1; // group to take after find()
@@ -23,6 +25,7 @@ public @interface ListParse {
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD})
     @interface BooleanLineParse {
+
         String value();
 
         String when();
@@ -35,6 +38,7 @@ public @interface ListParse {
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.FIELD)
     @interface LineParsers {
+
         LineParse[] value();
     }
 }

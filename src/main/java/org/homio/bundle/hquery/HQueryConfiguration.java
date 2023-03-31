@@ -1,15 +1,19 @@
-package org.touchhome.bundle.hquery;
+package org.homio.bundle.hquery;
 
+import java.io.File;
 import lombok.SneakyThrows;
+import org.homio.bundle.hquery.api.HardwareQuery;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Condition;
+import org.springframework.context.annotation.ConditionContext;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportAware;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.core.type.AnnotationMetadata;
-import org.touchhome.bundle.hquery.api.HardwareQuery;
-
-import java.io.File;
 
 @Configuration
 public class HQueryConfiguration implements ImportAware {
@@ -24,8 +28,8 @@ public class HQueryConfiguration implements ImportAware {
     @Bean
     public BeanFactoryPostProcessor beanFactoryPostProcessor(@Autowired(required = false) HardwareRepositoryFactoryPostHandler handler) {
         return new HardwareRepositoryFactoryPostProcessor(
-                scanBaseClassesPackage.getString("scanBaseClassesPackage"),
-                handler);
+            scanBaseClassesPackage.getString("scanBaseClassesPackage"),
+            handler);
     }
 
     @Bean
@@ -82,13 +86,15 @@ public class HQueryConfiguration implements ImportAware {
     }
 
     private static class LinuxEnvironmentCondition implements Condition {
+
         public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
             return (context.getEnvironment().getProperty("os.name").indexOf("nux") >= 0
-                    || context.getEnvironment().getProperty("os.name").indexOf("aix") >= 0);
+                || context.getEnvironment().getProperty("os.name").indexOf("aix") >= 0);
         }
     }
 
     private static class WindowsEnvironmentCondition implements Condition {
+
         public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
             return context.getEnvironment().getProperty("os.name").indexOf("Win") >= 0;
         }

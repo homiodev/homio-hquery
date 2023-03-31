@@ -1,24 +1,24 @@
-package org.touchhome.bundle.hquery.hardware.other;
+package org.homio.bundle.hquery.hardware.other;
 
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
-import org.touchhome.bundle.hquery.api.ListParse;
+import org.homio.bundle.hquery.api.ListParse.LineParse;
 
 @Getter
 @ToString
 public class HardwareOs {
 
-    @ListParse.LineParse("ID=(.*)")
+    @LineParse("ID=(.*)")
     private String id;
 
-    @ListParse.LineParse("ID_LIKE=(.*)")
+    @LineParse("ID_LIKE=(.*)")
     private String idLike;
 
-    @ListParse.LineParse("NAME=(.*)")
+    @LineParse("NAME=(.*)")
     private String name;
 
-    @ListParse.LineParse("VERSION=(.*)")
+    @LineParse("VERSION=(.*)")
     private String version;
 
     public String getPackageManager() {

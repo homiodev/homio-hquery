@@ -1,6 +1,32 @@
-package org.touchhome.bundle.hquery;
+package org.homio.bundle.hquery;
 
 import com.pivovarit.function.ThrowingBiFunction;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.annotation.Annotation;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
@@ -14,6 +40,16 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.logging.log4j.Level;
+import org.homio.bundle.hquery.api.CurlQuery;
+import org.homio.bundle.hquery.api.ErrorsHandler;
+import org.homio.bundle.hquery.api.HQueryMaxWaitTimeout;
+import org.homio.bundle.hquery.api.HQueryParam;
+import org.homio.bundle.hquery.api.HardwareException;
+import org.homio.bundle.hquery.api.HardwareQuery;
+import org.homio.bundle.hquery.api.HardwareRepository;
+import org.homio.bundle.hquery.api.ListParse;
+import org.homio.bundle.hquery.api.RawParse;
+import org.homio.bundle.hquery.api.SplitParse;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -31,29 +67,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpMessageConverterExtractor;
 import org.springframework.web.client.RestTemplate;
-import org.touchhome.bundle.hquery.api.*;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.annotation.Annotation;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Log4j2
 public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostProcessor {
@@ -73,7 +86,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     private final String basePackages;
-    private HardwareRepositoryFactoryPostHandler handler;
+    private final HardwareRepositoryFactoryPostHandler handler;
     private HardwareRepositoryThreadPool hardwareRepositoryThreadPool;
 
     HardwareRepositoryFactoryPostProcessor(String basePackages, HardwareRepositoryFactoryPostHandler handler) {
@@ -91,7 +104,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             log.info("No external thread pool found. use internal");
             hardwareRepositoryThreadPool = new HardwareRepositoryThreadPool() {
                 private final ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(2,
-                        20, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<>(100, true));
+                    20, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<>(100, true));
 
                 @Override
                 public Future<?> submit(String name, Runnable task) {
@@ -103,45 +116,45 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         List<Class<?>> classes = getClassesWithAnnotation();
         for (Class<?> aClass : classes) {
             beanFactory.registerSingleton(aClass.getSimpleName(),
-                    Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
-                        if (method.getName().equals("toString")) {
-                            return aClass.getSimpleName() + ":" +
-                                    aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class).description();
+                Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
+                    if (method.getName().equals("toString")) {
+                        return aClass.getSimpleName() + ":" +
+                            aClass.getDeclaredAnnotation(HardwareRepository.class).description();
+                    }
+                    Class<?> returnType = method.getReturnType();
+                    List<Object> results = null;
+                    for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
+                        if (results == null) {
+                            results = new ArrayList<>();
                         }
-                        Class<?> returnType = method.getReturnType();
-                        List<Object> results = null;
-                        for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
-                            if (results == null) {
-                                results = new ArrayList<>();
-                            }
-                            results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
+                        results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
+                    }
+                    Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
+                    if (value.isPresent()) {
+                        return value.get().get();
+                    }
+                    if (results != null) {
+                        if (results.isEmpty()) {
+                            return null;
+                        } else if (results.size() == 1) {
+                            return results.iterator().next();
+                        } else if (returnType.isAssignableFrom(List.class)) {
+                            return results;
+                        } else {
+                            return null;
                         }
-                        Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
-                        if (value.isPresent()) {
-                            return value.get().get();
-                        }
-                        if (results != null) {
-                            if (results.isEmpty()) {
-                                return null;
-                            } else if (results.size() == 1) {
-                                return results.iterator().next();
-                            } else if (returnType.isAssignableFrom(List.class)) {
-                                return results;
-                            } else {
-                                return null;
-                            }
-                        }
+                    }
 
-                        if (method.isDefault()) {
-                            // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
-                            return lookupConstructor.newInstance(aClass)
-                                    .in(aClass)
-                                    .unreflectSpecial(method, aClass)
-                                    .bindTo(proxy)
-                                    .invokeWithArguments(args);
-                        }
-                        throw new RuntimeException("Unable to execute hardware method without implementation");
-                    }));
+                    if (method.isDefault()) {
+                        // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
+                        return lookupConstructor.newInstance(aClass)
+                                                .in(aClass)
+                                                .unreflectSpecial(method, aClass)
+                                                .bindTo(proxy)
+                                                .invokeWithArguments(args);
+                    }
+                    throw new RuntimeException("Unable to execute hardware method without implementation");
+                }));
         }
         if (this.handler != null) {
             this.handler.accept(beanFactory);
@@ -156,9 +169,9 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             ProcessCache processCache;
 
             if ((curlQuery.cache() || curlQuery.cacheValid() > 0)
-                    && cache.containsKey(command)
-                    && (curlQuery.cacheValid() < 1 ||
-                    (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
+                && cache.containsKey(command)
+                && (curlQuery.cacheValid() < 1 ||
+                (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
                 processCache = cache.get(command);
             } else {
                 processCache = new ProcessCache(curlQuery.cacheValid());
@@ -213,13 +226,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     @SneakyThrows
     private Object handleHardwareQuery(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env,
-                                       Class<?> aClass, HQueryExecutor hQueryExecutor) {
+        Class<?> aClass, HQueryExecutor hQueryExecutor) {
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         List<String> parts = new ArrayList<>();
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
         BiConsumer<Double, String> progressBar = args == null || args.length == 0 ? null :
-                Stream.of(args).filter(arg -> arg instanceof BiConsumer)
-                        .map(arg -> (BiConsumer) arg).findAny().orElse(null);
+            Stream.of(args).filter(arg -> arg instanceof BiConsumer)
+                  .map(arg -> (BiConsumer) arg).findAny().orElse(null);
 
         String[] values = hQueryExecutor.getValues(hardwareQuery);
         Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
@@ -234,8 +247,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         String command = String.join(", ", parts);
         ProcessCache processCache;
         if (hardwareQuery.cacheValid() > 0 && cache.containsKey(command)
-                && (hardwareQuery.cacheValid() < 1 ||
-                (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
+            && (hardwareQuery.cacheValid() < 1 ||
+            (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
             processCache = cache.get(command);
         } else {
             processCache = new ProcessCache(hardwareQuery.cacheValid());
@@ -253,13 +266,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
                 String errorStreamName = hardwareQuery.name() + " / error stream reader";
                 errorFuture = hardwareRepositoryThreadPool.submit(errorStreamName, new LinesReader(errorStreamName,
-                        process.getErrorStream(), progressBar, message -> {
+                    process.getErrorStream(), progressBar, message -> {
                     processCache.errors.add(message);
                     log.log(hardwareQuery.printOutput() ? Level.WARN : Level.TRACE, message);
                 }));
                 String inputStreamName = hardwareQuery.name() + " / input stream reader";
                 inputFuture = hardwareRepositoryThreadPool.submit(inputStreamName, new LinesReader(inputStreamName,
-                        process.getInputStream(), progressBar, message -> {
+                    process.getInputStream(), progressBar, message -> {
                     processCache.inputs.add(message);
                     log.log(hardwareQuery.printOutput() ? Level.INFO : Level.TRACE, message);
                 }));
@@ -293,7 +306,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         }
 
         return handleCommandResult(hardwareQuery, method, errorsHandler, command, processCache.retValue, processCache.inputs,
-                processCache.errors);
+            processCache.errors);
     }
 
     private int getMaxWaitTimeout(HardwareQuery hardwareQuery, Object[] args, Method method) {
@@ -309,26 +322,26 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private Object returnOnDisableValue(Method method, Class<?> aClass) {
         // in case we expect return num we ignore any errors
         Class<?> returnType = method.getReturnType();
-        HardwareRepositoryAnnotation hardwareRepositoryAnnotation =
-                aClass.getDeclaredAnnotation(HardwareRepositoryAnnotation.class);
+        HardwareRepository hardwareRepository =
+            aClass.getDeclaredAnnotation(HardwareRepository.class);
         if (returnType.isPrimitive()) {
             switch (returnType.getName()) {
                 case "int":
-                    return hardwareRepositoryAnnotation.intValueOnDisable();
+                    return hardwareRepository.intValueOnDisable();
                 case "boolean":
-                    return hardwareRepositoryAnnotation.boolValueOnDisable();
+                    return hardwareRepository.boolValueOnDisable();
             }
         }
         if (returnType.isAssignableFrom(String.class)) {
-            return hardwareRepositoryAnnotation.stringValueOnDisable();
+            return hardwareRepository.stringValueOnDisable();
         }
         return null;
     }
 
     private Object handleCommandResult(HardwareQuery hardwareQuery, Method method, ErrorsHandler errorsHandler,
-                                       String command, int retValue,
-                                       List<String> inputs, List<String> errors)
-            throws IllegalAccessException, InstantiationException {
+        String command, int retValue,
+        List<String> inputs, List<String> errors)
+        throws IllegalAccessException, InstantiationException {
         Class<?> returnType = method.getReturnType();
 
         // in case we expect return num we ignore any errors
@@ -353,7 +366,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 }
             } else {
                 log.error("Error while execute command <{}>. Code: <{}>, Msg: <{}>", command, retValue,
-                        String.join(", ", errors));
+                    String.join(", ", errors));
                 if (!hardwareQuery.ignoreOnError()) {
                     throw new HardwareException(errors, inputs, retValue);
                 } else if (!hardwareQuery.valueOnError().isEmpty()) {
@@ -486,7 +499,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private Object handleBucket(List<String> inputs, RawParse rawParse, Field field) {
         return SystemUtils.IS_OS_WINDOWS ? newInstance(rawParse.win()).handle(inputs, field) :
-                newInstance(rawParse.nix()).handle(inputs, field);
+            newInstance(rawParse.nix()).handle(inputs, field);
     }
 
     private Object handleType(String value, Class<?> type) {
@@ -553,7 +566,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             }
         };
 
-        scanner.addIncludeFilter(new AnnotationTypeFilter(HardwareRepositoryAnnotation.class));
+        scanner.addIncludeFilter(new AnnotationTypeFilter(HardwareRepository.class));
         List<Class<? extends T>> foundClasses = new ArrayList<>();
         for (BeanDefinition bd : scanner.findCandidateComponents(basePackages)) {
             try {
@@ -565,26 +578,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return foundClasses;
     }
 
-    public interface HardwareRepositoryThreadPool {
-        Future<?> submit(String name, Runnable runnable);
-    }
-
-    @RequiredArgsConstructor
-    private static class ProcessCache {
-        final int cacheValidInSec;
-        final List<String> errors = new ArrayList<>();
-        final List<String> inputs = new ArrayList<>();
-        int retValue;
-        Object response;
-        long executedTime = System.currentTimeMillis();
-    }
-
     private static String replaceEnvValues(String text, ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
         return replaceValues(ENV_PATTERN, text, propertyGetter);
     }
 
     private static String replaceValues(Pattern pattern, String text,
-                                        ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
+        ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
         Matcher matcher = pattern.matcher(text);
         StringBuffer noteBuffer = new StringBuffer();
         while (matcher.find()) {
@@ -608,8 +607,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private static CloseableHttpClient createApacheHttpClient(int timeoutInSec) {
         RequestConfig config = RequestConfig.custom()
-                .setConnectTimeout(timeoutInSec * 1000)
-                .setSocketTimeout(timeoutInSec * 1000).build();
+                                            .setConnectTimeout(timeoutInSec * 1000)
+                                            .setSocketTimeout(timeoutInSec * 1000).build();
         return HttpClientBuilder.create().setDefaultRequestConfig(config).build();
     }
 
@@ -641,7 +640,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private static <T> T getWithTimeout(@NotNull String command, @NotNull Class<T> returnType, int timeoutInSec) {
         CloseableHttpResponse response = createApacheHttpClient(timeoutInSec).execute(new HttpGet(command));
         HttpMessageConverterExtractor<T> responseExtractor =
-                new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
+            new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
         return responseExtractor.extractData(new ClientHttpResponse() {
             @Override
             public HttpStatus getStatusCode() {
@@ -698,6 +697,22 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private boolean isParamHasAnnotation(Annotation[][] apiParams, int i, Class<? extends Annotation> aClass) {
         return apiParams.length > i && apiParams[i] != null && apiParams[i].length > 0
-                && aClass.isAssignableFrom(apiParams[i][0].getClass());
+            && aClass.isAssignableFrom(apiParams[i][0].getClass());
+    }
+
+    public interface HardwareRepositoryThreadPool {
+
+        Future<?> submit(String name, Runnable runnable);
+    }
+
+    @RequiredArgsConstructor
+    private static class ProcessCache {
+
+        final int cacheValidInSec;
+        final List<String> errors = new ArrayList<>();
+        final List<String> inputs = new ArrayList<>();
+        int retValue;
+        Object response;
+        long executedTime = System.currentTimeMillis();
     }
 }

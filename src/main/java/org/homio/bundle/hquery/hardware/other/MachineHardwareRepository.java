@@ -1,33 +1,32 @@
-package org.touchhome.bundle.hquery.hardware.other;
+package org.homio.bundle.hquery.hardware.other;
 
-import org.apache.commons.lang3.SystemUtils;
-import org.touchhome.bundle.hquery.api.HQueryMaxWaitTimeout;
-import org.touchhome.bundle.hquery.api.HQueryParam;
-import org.touchhome.bundle.hquery.api.HardwareQuery;
-import org.touchhome.bundle.hquery.api.HardwareRepositoryAnnotation;
-
-import javax.annotation.Nullable;
-import javax.validation.constraints.NotNull;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.function.BiConsumer;
+import org.apache.commons.lang3.SystemUtils;
+import org.homio.bundle.hquery.api.HQueryMaxWaitTimeout;
+import org.homio.bundle.hquery.api.HQueryParam;
+import org.homio.bundle.hquery.api.HardwareQuery;
+import org.homio.bundle.hquery.api.HardwareRepository;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-@HardwareRepositoryAnnotation(stringValueOnDisable = "N/A")
+@HardwareRepository(stringValueOnDisable = "N/A")
 public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
-            ignoreOnError = true, redirectErrorsToInputs = true)
+                   ignoreOnError = true, redirectErrorsToInputs = true)
     String executeNoErrorThrow(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                               @Nullable BiConsumer<Double, String> progressBar);
+        @Nullable BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
-            ignoreOnError = true, redirectErrorsToInputs = true)
+                   ignoreOnError = true, redirectErrorsToInputs = true)
     ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") @NotNull String command,
-                                              @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                                              @Nullable BiConsumer<Double, String> progressBar);
+        @HQueryMaxWaitTimeout int maxSecondsTimeout,
+        @Nullable BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @Nullable BiConsumer<Double, String> progressBar);
@@ -37,7 +36,7 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                   BiConsumer<Double, String> progressBar);
+        BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", maxSecondsTimeout = Integer.MAX_VALUE)
     String executeInfinite(@HQueryParam("command") @NotNull String command);
@@ -49,7 +48,7 @@ public interface MachineHardwareRepository {
     String getCpuLoad();
 
     @HardwareQuery(name = "Get cpu temperature", value = "vcgencmd measure_temp | grep  -o -E '[[:digit:]].*'",
-            printOutput = true)
+                   printOutput = true)
     String getCpuTemperature();
 
     @HardwareQuery(name = "Get memory", value = "free -m | awk 'NR==2{printf \"%s/%sMB\", $3,$2 }'", printOutput = true)
@@ -81,7 +80,7 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-                         BiConsumer<Double, String> progressBar);
+        BiConsumer<Double, String> progressBar);
 
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
     void enableSystemCtl(@HQueryParam("soft") @NotNull String soft);

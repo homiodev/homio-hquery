@@ -1,7 +1,4 @@
-package org.touchhome.bundle.hquery;
-
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+package org.homio.bundle.hquery;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -9,6 +6,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class LinesReader implements Runnable {
 
@@ -18,7 +17,7 @@ public class LinesReader implements Runnable {
     private final BiConsumer<Double, String> progressBar;
 
     public LinesReader(@NotNull String name, @NotNull InputStream inputStream, @Nullable BiConsumer<Double, String> progressBar,
-                       @NotNull Consumer<String> lineConsumer) {
+        @NotNull Consumer<String> lineConsumer) {
         this.name = name;
         this.inputStream = inputStream;
         this.lineConsumer = lineConsumer;

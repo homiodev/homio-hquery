@@ -1,4 +1,4 @@
-package org.touchhome.bundle.hquery.api;
+package org.homio.bundle.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -9,6 +9,7 @@ import java.util.function.Function;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface CurlQuery {
+
     String value();
 
     String valueOnError() default "";

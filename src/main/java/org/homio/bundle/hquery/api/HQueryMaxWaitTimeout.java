@@ -1,4 +1,4 @@
-package org.touchhome.bundle.hquery.api;
+package org.homio.bundle.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

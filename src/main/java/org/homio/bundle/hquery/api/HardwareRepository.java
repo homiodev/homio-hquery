@@ -1,4 +1,4 @@
-package org.touchhome.bundle.hquery.api;
+package org.homio.bundle.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -7,7 +7,8 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
-public @interface HardwareRepositoryAnnotation {
+public @interface HardwareRepository {
+
     String stringValueOnDisable() default "unknown";
 
     int intValueOnDisable() default -1;

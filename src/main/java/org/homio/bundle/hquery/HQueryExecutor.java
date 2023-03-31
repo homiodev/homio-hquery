@@ -1,10 +1,10 @@
-package org.touchhome.bundle.hquery;
-
-import org.touchhome.bundle.hquery.api.HardwareQuery;
+package org.homio.bundle.hquery;
 
 import java.io.File;
+import org.homio.bundle.hquery.api.HardwareQuery;
 
 public interface HQueryExecutor {
+
     String[] getValues(HardwareQuery hardwareQuery);
 
     default String updateCommand(String cmd) {

@@ -1,4 +1,4 @@
-package org.touchhome.bundle.hquery.api;
+package org.homio.bundle.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -8,11 +8,13 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE})
 public @interface SplitParse {
+
     String value();
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.METHOD})
     @interface SplitParseIndex {
+
         int index();
     }
 }
