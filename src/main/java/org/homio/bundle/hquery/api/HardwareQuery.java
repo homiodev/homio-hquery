@@ -26,6 +26,7 @@ public @interface HardwareQuery {
 
     /**
      * Set this to true if you want parse error from commands. This value also set ignoreOnError as true
+     * @return is redirect error input to regular input
      */
     boolean redirectErrorsToInputs() default false;
 
