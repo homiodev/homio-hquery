@@ -2,6 +2,7 @@ package org.homio.bundle.hquery.hardware.network;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.StringWriter;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
@@ -168,27 +169,40 @@ public interface NetworkHardwareRepository {
     @SneakyThrows
     default String getIPAddress() {
         String address = null;
-        if (SystemUtils.IS_OS_WINDOWS) {
-            try {
-                for (Enumeration<NetworkInterface> enumNetworks = NetworkInterface.getNetworkInterfaces(); enumNetworks
-                    .hasMoreElements(); ) {
-                    NetworkInterface networkInterface = enumNetworks.nextElement();
-                    for (Enumeration<InetAddress> enumIpAddr = networkInterface.getInetAddresses(); enumIpAddr
+        try {
+            try (final DatagramSocket socket = new DatagramSocket()) {
+                socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+                address = socket.getLocalAddress().getHostAddress();
+            }
+        } catch (Exception ignore) {}
+        if (StringUtils.isEmpty(address) || address.equals("0.0.0.0")) {
+            if (!SystemUtils.IS_OS_WINDOWS) {
+                String inet = getNetworkDescription().map(NetworkDescription::getInet).orElse(null);
+                if (StringUtils.isNotEmpty(inet) && !"127.0.0.1".equals(inet)) {
+                    address = inet;
+                }
+            } else {
+                try {
+                    for (Enumeration<NetworkInterface> enumNetworks = NetworkInterface.getNetworkInterfaces(); enumNetworks
                         .hasMoreElements(); ) {
-                        InetAddress inetAddress = enumIpAddr.nextElement();
-                        if (!inetAddress.isLoopbackAddress() && inetAddress.getHostAddress().length() < 18
-                            && inetAddress.isSiteLocalAddress()) {
-                            address = inetAddress.getHostAddress();
+                        NetworkInterface networkInterface = enumNetworks.nextElement();
+                        for (Enumeration<InetAddress> enumIpAddr = networkInterface.getInetAddresses(); enumIpAddr
+                            .hasMoreElements(); ) {
+                            InetAddress inetAddress = enumIpAddr.nextElement();
+                            if (!inetAddress.isLoopbackAddress() && inetAddress.getHostAddress().length() < 18
+                                && inetAddress.isSiteLocalAddress()) {
+                                address = inetAddress.getHostAddress();
+                                break;
+                            }
                         }
                     }
+                } catch (SocketException ignored) {
                 }
-            } catch (SocketException ignored) {
             }
-        } else {
-            String inet = getNetworkDescription().map(NetworkDescription::getInet).orElse(null);
-            if (StringUtils.isNotEmpty(inet) && !"127.0.0.1".equals(inet)) {
-                address = inet;
-            }
+        }
+
+        if (StringUtils.isEmpty(address)) {
+            address = InetAddress.getLocalHost().getHostAddress();
         }
 
         return address;
