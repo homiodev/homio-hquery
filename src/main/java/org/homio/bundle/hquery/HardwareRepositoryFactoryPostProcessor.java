@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
@@ -50,7 +51,9 @@ import org.homio.bundle.hquery.api.HardwareRepository;
 import org.homio.bundle.hquery.api.ListParse;
 import org.homio.bundle.hquery.api.RawParse;
 import org.homio.bundle.hquery.api.SplitParse;
+import org.homio.bundle.hquery.hardware.other.MachineHardwareRepository;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -112,7 +115,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 }
             };
         }
-        HQueryExecutor hQueryExecutor = beanFactory.getBean(HQueryExecutor.class);
+        HQueryExecutor hQueryExecutor = buildHQueryExecutor();
         List<Class<?>> classes = getClassesWithAnnotation();
         for (Class<?> aClass : classes) {
             beanFactory.registerSingleton(aClass.getSimpleName(),
@@ -121,44 +124,53 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                         return aClass.getSimpleName() + ":" +
                             aClass.getDeclaredAnnotation(HardwareRepository.class).description();
                     }
-                    Class<?> returnType = method.getReturnType();
-                    List<Object> results = null;
-                    for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
-                        if (results == null) {
-                            results = new ArrayList<>();
-                        }
-                        results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
-                    }
-                    Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
-                    if (value.isPresent()) {
-                        return value.get().get();
-                    }
-                    if (results != null) {
-                        if (results.isEmpty()) {
-                            return null;
-                        } else if (results.size() == 1) {
-                            return results.iterator().next();
-                        } else if (returnType.isAssignableFrom(List.class)) {
-                            return results;
-                        } else {
-                            return null;
-                        }
-                    }
-
-                    if (method.isDefault()) {
-                        // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
-                        return lookupConstructor.newInstance(aClass)
-                                                .in(aClass)
-                                                .unreflectSpecial(method, aClass)
-                                                .bindTo(proxy)
-                                                .invokeWithArguments(args);
-                    }
-                    throw new RuntimeException("Unable to execute hardware method without implementation");
+                    return handleQuery(env, hQueryExecutor, aClass, proxy, method, args);
                 }));
         }
+
+        MachineHardwareRepository machineHardwareRepository = beanFactory.getBean(MachineHardwareRepository.class);
+        hQueryExecutor.setPm(machineHardwareRepository.getOs().getPackageManager());
+
         if (this.handler != null) {
             this.handler.accept(beanFactory);
         }
+    }
+
+    @Nullable
+    private Object handleQuery(Environment env, HQueryExecutor hQueryExecutor, Class<?> aClass, Object proxy, Method method, Object[] args) throws Throwable {
+        Class<?> returnType = method.getReturnType();
+        List<Object> results = null;
+        for (HardwareQuery hardwareQuery : method.getDeclaredAnnotationsByType(HardwareQuery.class)) {
+            if (results == null) {
+                results = new ArrayList<>();
+            }
+            results.add(handleHardwareQuery(hardwareQuery, args, method, env, aClass, hQueryExecutor));
+        }
+        Optional<AtomicReference<Object>> value = handleCurlQuery(method, args, env);
+        if (value.isPresent()) {
+            return value.get().get();
+        }
+        if (results != null) {
+            if (results.isEmpty()) {
+                return null;
+            } else if (results.size() == 1) {
+                return results.iterator().next();
+            } else if (returnType.isAssignableFrom(List.class)) {
+                return results;
+            } else {
+                return null;
+            }
+        }
+
+        if (method.isDefault()) {
+            // java 11: MethodHandles.privateLookupIn(aClass, MethodHandles.lookup())
+            return lookupConstructor.newInstance(aClass)
+                                    .in(aClass)
+                                    .unreflectSpecial(method, aClass)
+                                    .bindTo(proxy)
+                                    .invokeWithArguments(args);
+        }
+        throw new RuntimeException("Unable to execute hardware method without implementation");
     }
 
     private Optional<AtomicReference<Object>> handleCurlQuery(Method method, Object[] args, Environment env) {
@@ -228,18 +240,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private Object handleHardwareQuery(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env,
         Class<?> aClass, HQueryExecutor hQueryExecutor) {
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
-        List<String> parts = new ArrayList<>();
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
         BiConsumer<Double, String> progressBar = args == null || args.length == 0 ? null :
             Stream.of(args).filter(arg -> arg instanceof BiConsumer)
                   .map(arg -> (BiConsumer) arg).findAny().orElse(null);
 
-        String[] values = hQueryExecutor.getValues(hardwareQuery);
-        Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
-            String argCmd = replaceStringWithArgs(cmd, args, method);
-            String envCmd = replaceEnvValues(argCmd, env::getProperty);
-            parts.add(hQueryExecutor.updateCommand(envCmd));
-        });
+        List<String> parts = buildExecutableCommand(hardwareQuery, args, method, env, hQueryExecutor);
         if (parts.isEmpty()) {
             return returnOnDisableValue(method, aClass);
         }
@@ -309,6 +315,17 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             processCache.errors);
     }
 
+    private List<String> buildExecutableCommand(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env, HQueryExecutor hQueryExecutor) {
+        List<String> parts = new ArrayList<>();
+        String[] values = hQueryExecutor.getValues(hardwareQuery);
+        Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
+            String argCmd = replaceStringWithArgs(cmd, args, method);
+            String envCmd = replaceEnvValues(argCmd, env::getProperty);
+            parts.add(hQueryExecutor.updateCommand(envCmd));
+        });
+        return parts;
+    }
+
     private int getMaxWaitTimeout(HardwareQuery hardwareQuery, Object[] args, Method method) {
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         for (int i = 0; i < parameterAnnotations.length; i++) {
@@ -322,8 +339,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private Object returnOnDisableValue(Method method, Class<?> aClass) {
         // in case we expect return num we ignore any errors
         Class<?> returnType = method.getReturnType();
-        HardwareRepository hardwareRepository =
-            aClass.getDeclaredAnnotation(HardwareRepository.class);
+        HardwareRepository hardwareRepository = aClass.getDeclaredAnnotation(HardwareRepository.class);
         if (returnType.isPrimitive()) {
             switch (returnType.getName()) {
                 case "int":
@@ -714,5 +730,59 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         int retValue;
         Object response;
         long executedTime = System.currentTimeMillis();
+    }
+
+    private HQueryExecutor buildHQueryExecutor() {
+        if (SystemUtils.IS_OS_WINDOWS) {
+            return new HQueryExecutor() {
+                @Override
+                public void setPm(String ignore) {
+                }
+
+                @Override
+                public String[] getValues(HardwareQuery hardwareQuery) {
+                    return hardwareQuery.win();
+                }
+
+                @Override
+                @SneakyThrows
+                public Process createProcess(String[] cmdParts, String[] env, File dir) {
+                    if (dir != null) {
+                        return Runtime.getRuntime().exec(cmdParts, env, dir);
+                    } else if (cmdParts.length == 1) {
+                        return Runtime.getRuntime().exec("cmd.exe /C " + cmdParts[0]);
+                    } else {
+                        return Runtime.getRuntime().exec(cmdParts);
+                    }
+                }
+            };
+        } else {
+            return new HQueryExecutor() {
+                @Setter
+                private String pm = "apt";
+
+                @Override
+                public String[] getValues(HardwareQuery hardwareQuery) {
+                    return hardwareQuery.value();
+                }
+
+                @Override
+                public String updateCommand(String cmd) {
+                    return cmd.contains("$PM") ? cmd.replace("$PM", pm) : cmd;
+                }
+
+                @Override
+                @SneakyThrows
+                public Process createProcess(String[] cmdParts, String[] env, File dir) {
+                    if (dir != null) {
+                        return Runtime.getRuntime().exec(cmdParts, env, dir);
+                    } else if (cmdParts.length == 1) {
+                        return Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmdParts[0]});
+                    } else {
+                        return Runtime.getRuntime().exec(cmdParts);
+                    }
+                }
+            };
+        }
     }
 }

@@ -75,10 +75,10 @@ public interface MachineHardwareRepository {
     @HardwareQuery(name = "Change file permission", value = "chmod :mode -R :path", printOutput = true)
     void setPermissions(@HQueryParam("path") Path path, @HQueryParam("mode") int mode);
 
-    @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
+    @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
-    @HardwareQuery(name = "Install software", value = "apt-get install -y :soft", printOutput = true)
+    @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         BiConsumer<Double, String> progressBar);
 

@@ -24,7 +24,8 @@ public class HardwareOs {
     public String getPackageManager() {
         switch (StringUtils.defaultString(idLike, id)) {
             case "debian":
-                return "apt-get";
+            case "ubuntu":
+                return "apt";
             case "rhel fedora":
                 return "yum";
         }
