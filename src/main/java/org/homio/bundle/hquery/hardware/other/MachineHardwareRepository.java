@@ -38,9 +38,6 @@ public interface MachineHardwareRepository {
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         BiConsumer<Double, String> progressBar);
 
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", maxSecondsTimeout = Integer.MAX_VALUE)
-    String executeInfinite(@HQueryParam("command") @NotNull String command);
-
     @HardwareQuery(name = "Get SD card memory", value = "df -m / | sed -e /^Filesystem/d", printOutput = true)
     HardwareMemory getSDCardMemory();
 

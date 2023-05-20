@@ -36,4 +36,14 @@ public @interface HardwareQuery {
     int cacheValid() default 0;
 
     String valueOnError() default "";
+
+    /**
+     * Timeout to wait when error stream is closed before force stop it
+     */
+    int errorStreamWaitTimeoutMs() default 250;
+
+    /**
+     * Timeout to wait when input stream is closed before force stop it
+     */
+    int inputStreamWaitTimeoutMs() default 250;
 }

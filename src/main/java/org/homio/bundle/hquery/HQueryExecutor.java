@@ -2,10 +2,10 @@ package org.homio.bundle.hquery;
 
 import java.io.File;
 import org.homio.bundle.hquery.api.HardwareQuery;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.core.env.Environment;
 
 public interface HQueryExecutor {
-
-    void setPm(String value);
 
     String[] getValues(HardwareQuery hardwareQuery);
 
@@ -14,4 +14,6 @@ public interface HQueryExecutor {
     }
 
     Process createProcess(String[] cmdParts, String[] env, File dir);
+
+    void prepare(ConfigurableListableBeanFactory beanFactory, Environment env);
 }
