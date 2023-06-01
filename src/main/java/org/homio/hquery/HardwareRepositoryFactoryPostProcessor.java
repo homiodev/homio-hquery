@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery;
+package org.homio.hquery;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -42,17 +42,17 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.logging.log4j.Level;
-import org.homio.bundle.hquery.api.CurlQuery;
-import org.homio.bundle.hquery.api.ErrorsHandler;
-import org.homio.bundle.hquery.api.HQueryMaxWaitTimeout;
-import org.homio.bundle.hquery.api.HQueryParam;
-import org.homio.bundle.hquery.api.HardwareException;
-import org.homio.bundle.hquery.api.HardwareQuery;
-import org.homio.bundle.hquery.api.HardwareRepository;
-import org.homio.bundle.hquery.api.ListParse;
-import org.homio.bundle.hquery.api.RawParse;
-import org.homio.bundle.hquery.api.SplitParse;
-import org.homio.bundle.hquery.hardware.other.MachineHardwareRepository;
+import org.homio.hquery.api.CurlQuery;
+import org.homio.hquery.api.ErrorsHandler;
+import org.homio.hquery.api.HQueryMaxWaitTimeout;
+import org.homio.hquery.api.HQueryParam;
+import org.homio.hquery.api.HardwareException;
+import org.homio.hquery.api.HardwareQuery;
+import org.homio.hquery.api.HardwareRepository;
+import org.homio.hquery.api.ListParse;
+import org.homio.hquery.api.RawParse;
+import org.homio.hquery.api.SplitParse;
+import org.homio.hquery.hardware.other.MachineHardwareRepository;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.BeansException;

@@ -1,6 +1,6 @@
-package org.homio.bundle.hquery.hardware.other;
+package org.homio.hquery.hardware.other;
 
-import org.homio.bundle.hquery.api.SplitParse;
+import org.homio.hquery.api.SplitParse;
 
 @SplitParse("\\s+")
 public class HardwareMemory {

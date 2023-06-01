@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery.hardware.network;
+package org.homio.hquery.hardware.network;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.StringWriter;
@@ -27,12 +27,12 @@ import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.logging.log4j.Logger;
-import org.homio.bundle.hquery.api.CurlQuery;
-import org.homio.bundle.hquery.api.ErrorsHandler;
-import org.homio.bundle.hquery.api.HQueryParam;
-import org.homio.bundle.hquery.api.HardwareQuery;
-import org.homio.bundle.hquery.api.HardwareRepository;
-import org.homio.bundle.hquery.api.ListParse;
+import org.homio.hquery.api.CurlQuery;
+import org.homio.hquery.api.ErrorsHandler;
+import org.homio.hquery.api.HQueryParam;
+import org.homio.hquery.api.HardwareQuery;
+import org.homio.hquery.api.HardwareRepository;
+import org.homio.hquery.api.ListParse;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.templatemode.TemplateMode;

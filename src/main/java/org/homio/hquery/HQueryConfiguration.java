@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery;
+package org.homio.hquery;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;

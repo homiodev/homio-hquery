@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery;
+package org.homio.hquery;
 
 import java.io.BufferedReader;
 import java.io.IOException;

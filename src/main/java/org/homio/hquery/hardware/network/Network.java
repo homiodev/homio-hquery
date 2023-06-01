@@ -1,9 +1,9 @@
-package org.homio.bundle.hquery.hardware.network;
+package org.homio.hquery.hardware.network;
 
 import lombok.Getter;
 import lombok.ToString;
-import org.homio.bundle.hquery.api.ListParse.BooleanLineParse;
-import org.homio.bundle.hquery.api.ListParse.LineParse;
+import org.homio.hquery.api.ListParse.BooleanLineParse;
+import org.homio.hquery.api.ListParse.LineParse;
 
 @Getter
 @ToString

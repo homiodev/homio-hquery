@@ -1,9 +1,9 @@
-package org.homio.bundle.hquery.hardware.other;
+package org.homio.hquery.hardware.other;
 
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
-import org.homio.bundle.hquery.api.ListParse.LineParse;
+import org.homio.hquery.api.ListParse.LineParse;
 
 @Getter
 @ToString

@@ -1,10 +1,10 @@
-package org.homio.bundle.hquery.hardware.network;
+package org.homio.hquery.hardware.network;
 
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-import org.homio.bundle.hquery.api.ListParse.LineParse;
+import org.homio.hquery.api.ListParse.LineParse;
 
 @Getter
 @Setter

@@ -1,13 +1,13 @@
-package org.homio.bundle.hquery.hardware.other;
+package org.homio.hquery.hardware.other;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.function.BiConsumer;
 import org.apache.commons.lang3.SystemUtils;
-import org.homio.bundle.hquery.api.HQueryMaxWaitTimeout;
-import org.homio.bundle.hquery.api.HQueryParam;
-import org.homio.bundle.hquery.api.HardwareQuery;
-import org.homio.bundle.hquery.api.HardwareRepository;
+import org.homio.hquery.api.HQueryMaxWaitTimeout;
+import org.homio.hquery.api.HQueryParam;
+import org.homio.hquery.api.HardwareQuery;
+import org.homio.hquery.api.HardwareRepository;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

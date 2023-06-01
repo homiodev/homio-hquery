@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery.api;
+package org.homio.hquery.api;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Repeatable;

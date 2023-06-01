@@ -1,4 +1,4 @@
-package org.homio.bundle.hquery.api;
+package org.homio.hquery.api;
 
 import java.util.List;
 import lombok.AllArgsConstructor;
