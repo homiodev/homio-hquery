@@ -2,8 +2,8 @@ package org.homio.hquery.hardware.other;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.function.BiConsumer;
 import org.apache.commons.lang3.SystemUtils;
+import org.homio.hquery.HQueryProgressBar;
 import org.homio.hquery.api.HQueryMaxWaitTimeout;
 import org.homio.hquery.api.HQueryParam;
 import org.homio.hquery.api.HardwareQuery;
@@ -20,25 +20,25 @@ public interface MachineHardwareRepository {
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
                    ignoreOnError = true, redirectErrorsToInputs = true)
     String executeNoErrorThrow(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable BiConsumer<Double, String> progressBar);
+        @Nullable HQueryProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
                    ignoreOnError = true, redirectErrorsToInputs = true)
     ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") @NotNull String command,
         @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable BiConsumer<Double, String> progressBar);
+        @Nullable HQueryProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command, @Nullable BiConsumer<Double, String> progressBar);
+    String execute(@HQueryParam("command") @NotNull String command, @Nullable HQueryProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        BiConsumer<Double, String> progressBar);
+        @Nullable HQueryProgressBar progressBar);
 
-    @HardwareQuery(name = "Get SD card memory", value = "df -m / | sed -e /^Filesystem/d", printOutput = true)
+    @HardwareQuery(name = "Get Disc space", value = "df -k /", printOutput = true)
     HardwareMemory getSDCardMemory();
 
     @HardwareQuery(name = "Get cpu load", value = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'", printOutput = true)
@@ -77,7 +77,7 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        BiConsumer<Double, String> progressBar);
+        @Nullable HQueryProgressBar progressBar);
 
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
     void enableSystemCtl(@HQueryParam("soft") @NotNull String soft);
