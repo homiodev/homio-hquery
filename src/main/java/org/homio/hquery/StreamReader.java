@@ -6,14 +6,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
 
 @RequiredArgsConstructor
 public class StreamReader implements Runnable {
 
-    private final @NotNull String name;
-    private final @NotNull InputStream inputStream;
-    private final @NotNull Consumer<String> lineConsumer;
+    private final String name;
+    private final InputStream inputStream;
+    private final Consumer<String> lineConsumer;
 
     @Override
     public void run() {

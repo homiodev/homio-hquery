@@ -1,7 +1,6 @@
 package org.homio.hquery.hardware.network;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.StringWriter;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -33,10 +32,6 @@ import org.homio.hquery.api.HQueryParam;
 import org.homio.hquery.api.HardwareQuery;
 import org.homio.hquery.api.HardwareRepository;
 import org.homio.hquery.api.ListParse;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
-import org.thymeleaf.templatemode.TemplateMode;
-import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 
 @HardwareRepository(stringValueOnDisable = "N/A")
 public interface NetworkHardwareRepository {
@@ -227,21 +222,18 @@ public interface NetworkHardwareRepository {
 
     @SneakyThrows
     default void setWifiCredentials(String ssid, String password, String country) {
-        TemplateEngine templateEngine = new TemplateEngine();
-        ClassLoaderTemplateResolver templateResolver = new ClassLoaderTemplateResolver();
-        templateResolver.setTemplateMode(TemplateMode.HTML);
-        templateEngine.setTemplateResolver(templateResolver);
-
-        Context context = new Context();
-        context.setVariable("SSID", ssid);
-        context.setVariable("PASSWORD", password);
-        context.setVariable("COUNTRY", country);
-
-        StringWriter stringWriter = new StringWriter();
-        templateEngine.process("templates/wpa_supplicant.conf", context, stringWriter);
-        String value = stringWriter.toString();
-
-        Files.write(Paths.get("/etc/wpa_supplicant/wpa_supplicant.conf"), value.getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
+        String code = """
+            ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+            update_config=1
+            country=%s
+                        
+            network={
+                 ssid="%s"
+                 psk="%s"
+                 scan_ssid=1
+            }
+            """.formatted(country, ssid, password);
+        Files.write(Paths.get("/etc/wpa_supplicant/wpa_supplicant.conf"), code.getBytes(), StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     @HardwareQuery(name = "Get active network interface", value = "ip addr | awk '/state UP/ {print $2}' | sed 's/.$//'")

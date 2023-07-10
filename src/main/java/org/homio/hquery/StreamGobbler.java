@@ -8,15 +8,14 @@ import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
-import org.jetbrains.annotations.NotNull;
 
 @Log4j2
 @RequiredArgsConstructor
 public class StreamGobbler {
 
-    private final @NotNull String name;
-    private final @NotNull Consumer<String> inputConsumer;
-    private final @NotNull Consumer<String> errorConsumer;
+    private final String name;
+    private final Consumer<String> inputConsumer;
+    private final Consumer<String> errorConsumer;
     private Future<?> inputFuture = null;
     private Future<?> errorFuture = null;
     private ExecutorService executorService;

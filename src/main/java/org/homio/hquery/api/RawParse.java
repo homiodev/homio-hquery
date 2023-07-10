@@ -18,6 +18,6 @@ public @interface RawParse {
 
     interface RawParseHandler {
 
-        Object handle(List<String> inputs, @Nullable Field field);
+        Object handle(List<String> inputs, Field field);
     }
 }

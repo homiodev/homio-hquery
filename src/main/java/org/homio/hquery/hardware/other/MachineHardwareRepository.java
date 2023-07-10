@@ -3,40 +3,41 @@ package org.homio.hquery.hardware.other;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import org.apache.commons.lang3.SystemUtils;
-import org.homio.hquery.HQueryProgressBar;
+import org.homio.hquery.ProgressBar;
 import org.homio.hquery.api.HQueryMaxWaitTimeout;
 import org.homio.hquery.api.HQueryParam;
 import org.homio.hquery.api.HardwareQuery;
 import org.homio.hquery.api.HardwareRepository;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
+/**
+ * ProgressBar may be null
+ */
 @HardwareRepository(stringValueOnDisable = "N/A")
 public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command);
+    String execute(@HQueryParam("command") String command);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
                    ignoreOnError = true, redirectErrorsToInputs = true)
-    String executeNoErrorThrow(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable HQueryProgressBar progressBar);
+    String executeNoErrorThrow(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
+        ProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
                    ignoreOnError = true, redirectErrorsToInputs = true)
-    ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") @NotNull String command,
+    ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") String command,
         @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable HQueryProgressBar progressBar);
+        ProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command, @Nullable HQueryProgressBar progressBar);
+    String execute(@HQueryParam("command") String command, ProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
+    String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
-    String execute(@HQueryParam("command") @NotNull String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable HQueryProgressBar progressBar);
+    String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
+        ProgressBar progressBar);
 
     @HardwareQuery(name = "Get Disc space", value = "df -k /", printOutput = true)
     HardwareMemory getSDCardMemory();
@@ -73,28 +74,28 @@ public interface MachineHardwareRepository {
     void setPermissions(@HQueryParam("path") Path path, @HQueryParam("mode") int mode);
 
     @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
-    void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout);
+    void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
     @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
-    void installSoftware(@HQueryParam("soft") @NotNull String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        @Nullable HQueryProgressBar progressBar);
+    void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
+        ProgressBar progressBar);
 
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
-    void enableSystemCtl(@HQueryParam("soft") @NotNull String soft);
+    void enableSystemCtl(@HQueryParam("soft") String soft);
 
     @HardwareQuery(name = "Start systemctl service", value = "systemctl start :soft", printOutput = true)
-    void startSystemCtl(@HQueryParam("soft") @NotNull String soft);
+    void startSystemCtl(@HQueryParam("soft") String soft);
 
     @HardwareQuery(name = "Stop systemctl service", value = "systemctl stop :soft", printOutput = true)
-    void stopSystemCtl(@HQueryParam("soft") @NotNull String soft);
+    void stopSystemCtl(@HQueryParam("soft") String soft);
 
-    default void enableAndStartSystemctl(@NotNull String soft) {
+    default void enableAndStartSystemctl(String soft) {
         enableSystemCtl(soft);
         startSystemCtl(soft);
     }
 
     @HardwareQuery(name = "Check software installed", value = "which :soft", win = "where :soft", cacheValid = 60)
-    boolean isSoftwareInstalled(@HQueryParam("soft") @NotNull String soft);
+    boolean isSoftwareInstalled(@HQueryParam("soft") String soft);
 
     default String getDeviceModel() {
         return SystemUtils.IS_OS_WINDOWS ? SystemUtils.OS_NAME : catDeviceModel();

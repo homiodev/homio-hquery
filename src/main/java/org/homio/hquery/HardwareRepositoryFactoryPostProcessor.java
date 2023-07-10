@@ -2,9 +2,7 @@ package org.homio.hquery;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.pivovarit.function.ThrowingBiFunction;
 import java.io.File;
-import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -17,12 +15,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -31,11 +29,6 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
-import okhttp3.Call;
-import okhttp3.Headers;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -50,8 +43,6 @@ import org.homio.hquery.api.ListParse;
 import org.homio.hquery.api.RawParse;
 import org.homio.hquery.api.SplitParse;
 import org.homio.hquery.hardware.other.MachineHardwareRepository;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -61,24 +52,15 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.client.ClientHttpResponse;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.HttpMessageConverterExtractor;
-import org.springframework.web.client.RestTemplate;
 
 @Log4j2
 public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostProcessor {
 
     public static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{.*?}");
     private static final Map<String, ProcessCache> cache = new HashMap<>();
-    private static final RestTemplate restTemplate = new RestTemplate();
 
     private final String basePackages;
     private final HardwareRepositoryFactoryPostHandler handler;
-    private HardwareRepositoryThreadPool hardwareRepositoryThreadPool;
 
     HardwareRepositoryFactoryPostProcessor(String basePackages, HardwareRepositoryFactoryPostHandler handler) {
         this.basePackages = basePackages;
@@ -89,6 +71,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     @SneakyThrows
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
         Environment env = beanFactory.getBean(Environment.class);
+        HardwareRepositoryThreadPool hardwareRepositoryThreadPool;
         try {
             hardwareRepositoryThreadPool = beanFactory.getBean(HardwareRepositoryThreadPool.class);
         } catch (NoSuchBeanDefinitionException ex) {
@@ -123,7 +106,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         }
     }
 
-    @Nullable
     private Object handleQuery(Environment env, HQueryExecutor hQueryExecutor, Class<?> aClass, Object proxy, Method method, Object[] args) throws Throwable {
         Class<?> returnType = method.getReturnType();
         List<Object> results = null;
@@ -170,7 +152,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             } else {
                 processCache = new ProcessCache(curlQuery.cacheValid());
                 try {
-                    Object result = getWithTimeout(command, method.getReturnType(), curlQuery.maxSecondsTimeout());
+                    Object result = Curl.getWithTimeout(command, method.getReturnType(), curlQuery.maxSecondsTimeout());
                     Function<Object, Object> mapping = newInstance(curlQuery.mapping());
                     processCache.response = mapping.apply(result);
 
@@ -223,7 +205,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         Class<?> aClass, HQueryExecutor hQueryExecutor) {
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
-        HQueryProgressBar progressBar = getProgressBar(args, hardwareQuery.printOutput());
+        ProgressBar progressBar = getProgressBar(args, hardwareQuery.printOutput());
 
         List<String> parts = buildExecutableCommand(hardwareQuery, args, method, env, hQueryExecutor);
         if (parts.isEmpty()) {
@@ -286,17 +268,14 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             processCache.errors);
     }
 
-    private @NotNull HQueryProgressBar getProgressBar(Object[] args, boolean printOutput) {
+    private ProgressBar getProgressBar(Object[] args, boolean printOutput) {
         var progressBar = args == null || args.length == 0 ? null :
-            Stream.of(args).filter(arg -> arg instanceof HQueryProgressBar)
-                  .map(arg -> (HQueryProgressBar) arg).findAny().orElse(null);
+            Stream.of(args).filter(arg -> arg instanceof ProgressBar)
+                  .map(arg -> (ProgressBar) arg).findAny().orElse(null);
         if (progressBar == null) {
-            progressBar = new HQueryProgressBar(0, 0, 0D) {
-                @Override
-                public void progress(double value, String message, boolean isError) {
-                    if (printOutput) {
-                        log.info(message);
-                    }
+            progressBar = (progress, message, isError) -> {
+                if (printOutput) {
+                    log.info(message);
                 }
             };
         }
@@ -330,10 +309,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         HardwareRepository hardwareRepository = aClass.getDeclaredAnnotation(HardwareRepository.class);
         if (returnType.isPrimitive()) {
             switch (returnType.getName()) {
-                case "int":
+                case "int" -> {
                     return hardwareRepository.intValueOnDisable();
-                case "boolean":
+                }
+                case "boolean" -> {
                     return hardwareRepository.boolValueOnDisable();
+                }
             }
         }
         if (returnType.isAssignableFrom(String.class)) {
@@ -343,19 +324,21 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     private Object handleCommandResult(
-        @NotNull HardwareQuery hardwareQuery,
-        @NotNull Method method,
-        @Nullable ErrorsHandler errorsHandler,
+        HardwareQuery hardwareQuery,
+        Method method,
+        ErrorsHandler errorsHandler,
         String command, int retValue, List<String> inputs, List<String> errors) {
         Class<?> returnType = method.getReturnType();
 
         // in case we expect return num we ignore any errors
         if (returnType.isPrimitive()) {
             switch (returnType.getName()) {
-                case "int":
+                case "int" -> {
                     return retValue;
-                case "boolean":
+                }
+                case "boolean" -> {
                     return retValue == 0;
+                }
             }
         }
 
@@ -502,12 +485,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return null;
     }
 
-    private Object handleBucket(List<String> inputs, @NotNull RawParse rawParse, Field field) {
+    private Object handleBucket(List<String> inputs, RawParse rawParse, Field field) {
         return SystemUtils.IS_OS_WINDOWS ? newInstance(rawParse.win()).handle(inputs, field) :
             newInstance(rawParse.nix()).handle(inputs, field);
     }
 
-    private @NotNull Object handleType(@NotNull String value, @NotNull Class<?> type) {
+    private Object handleType(String value, Class<?> type) {
         if (type.isAssignableFrom(Integer.class)) {
             return Integer.valueOf(value);
         } else if (type.isAssignableFrom(Double.class)) {
@@ -566,7 +549,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     private <T> List<Class<? extends T>> getClassesWithAnnotation() {
         ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false) {
             @Override
-            protected boolean isCandidateComponent(@NotNull AnnotatedBeanDefinition beanDefinition) {
+            protected boolean isCandidateComponent(AnnotatedBeanDefinition beanDefinition) {
                 return true;
             }
         };
@@ -583,12 +566,12 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return foundClasses;
     }
 
-    private static String replaceEnvValues(String text, ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
+    private static String replaceEnvValues(String text, BiFunction<String, String, String> propertyGetter) {
         return replaceValues(ENV_PATTERN, text, propertyGetter);
     }
 
     private static String replaceValues(Pattern pattern, String text,
-        ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
+        BiFunction<String, String, String> propertyGetter) {
         Matcher matcher = pattern.matcher(text);
         StringBuilder noteBuffer = new StringBuilder();
         while (matcher.find()) {
@@ -600,7 +583,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     @SneakyThrows
-    private static String getEnvProperty(String value, ThrowingBiFunction<String, String, String, Exception> propertyGetter) {
+    private static String getEnvProperty(String value, BiFunction<String, String, String> propertyGetter) {
         String[] array = getSpringValuesPattern(value);
         return propertyGetter.apply(array[0], array[1]);
     }
@@ -625,66 +608,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     @SneakyThrows
-    private static @NotNull <T> T newInstance(Class<T> clazz) {
+    private static <T> T newInstance(Class<T> clazz) {
         Constructor<T> constructor = findObjectConstructor(clazz);
         if (constructor != null) {
             constructor.setAccessible(true);
             return constructor.newInstance();
         }
         throw new IllegalArgumentException("Unable to find default constructor for class: " + clazz);
-    }
-
-    @SneakyThrows
-    private static <T> T getWithTimeout(@NotNull String command, @NotNull Class<T> returnType, int timeoutInSec) {
-        OkHttpClient client = new OkHttpClient.Builder()
-            .callTimeout(timeoutInSec, SECONDS)
-            .readTimeout(timeoutInSec, SECONDS)
-            .connectTimeout(timeoutInSec, SECONDS)
-            .build();
-        Request request = new Request.Builder().url(command).build();
-
-        Call call = client.newCall(request);
-        try (Response response = call.execute()) {
-            HttpMessageConverterExtractor<T> responseExtractor =
-                new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
-            return responseExtractor.extractData(new ClientHttpResponse() {
-                @Override
-                public @NotNull HttpStatus getStatusCode() {
-                    return Objects.requireNonNull(HttpStatus.resolve(response.code()));
-                }
-
-                @Override
-                public int getRawStatusCode() {
-                    return response.code();
-                }
-
-                @Override
-                public @NotNull String getStatusText() {
-                    return response.message();
-                }
-
-                @Override
-                @SneakyThrows
-                public void close() {
-                    response.close();
-                }
-
-                @Override
-                public @NotNull InputStream getBody() {
-                    return Objects.requireNonNull(response.body()).byteStream();
-                }
-
-                @Override
-                public @NotNull HttpHeaders getHeaders() {
-                    MultiValueMap<String, String> headerMap = new LinkedMultiValueMap<>();
-                    Headers headers = response.headers();
-                    for (int i = 0; i < headers.size(); i++) {
-                        headerMap.put(headers.name(i), headers.values(headers.name(i)));
-                    }
-                    return new HttpHeaders(headerMap);
-                }
-            });
-        }
     }
 
     private String getErrorMessage(Throwable ex) {
