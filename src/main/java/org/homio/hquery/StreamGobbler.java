@@ -7,9 +7,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import lombok.extern.log4j.Log4j2;
 
-@Log4j2
 @RequiredArgsConstructor
 public class StreamGobbler {
 
@@ -21,7 +19,7 @@ public class StreamGobbler {
     private ExecutorService executorService;
 
     public static void streamAndStop(Process process, int waitTimeoutBeforeStopMs, int waitStopStreamsTimeoutMs) {
-        StreamGobbler killStreamGobbler = new StreamGobbler("kill-sig-" + process.pid(), log::info, log::error);
+        StreamGobbler killStreamGobbler = new StreamGobbler("kill-sig-" + process.pid(), System.out::println, System.err::println);
         killStreamGobbler.stream(process);
         killStreamGobbler.stopStream(waitTimeoutBeforeStopMs, waitStopStreamsTimeoutMs);
     }

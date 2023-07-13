@@ -1,5 +1,7 @@
 package org.homio.hquery.hardware.network;
 
+import static java.lang.String.format;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -18,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import lombok.Getter;
@@ -25,7 +28,6 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
-import org.apache.logging.log4j.Logger;
 import org.homio.hquery.api.CurlQuery;
 import org.homio.hquery.api.ErrorsHandler;
 import org.homio.hquery.api.HQueryParam;
@@ -119,7 +121,7 @@ public interface NetworkHardwareRepository {
         return cityGeolocation;
     }
 
-    default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Logger log, Set<Integer> ports,
+    default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Consumer<String> log, Set<Integer> ports,
         int timeout, BiConsumer<String, Integer> handler) {
         if (pinIpAddressRange == null) {
             throw new IllegalArgumentException(
@@ -138,7 +140,7 @@ public interface NetworkHardwareRepository {
                 int ipSuffix = i;
                 tasks.put("check-ip-" + ipSuffix + "-port-" + port, () -> {
                     String ipAddress = ipPrefix + ipSuffix;
-                    log.debug("Check ip: {}:{}", ipAddress, port);
+                    log.accept(format("Check ip: %s:%s", ipAddress, port));
                     if (pingAddress(ipAddress, port, timeout)) {
                         handler.accept(ipAddress, port);
                         return ipSuffix;
@@ -214,7 +216,7 @@ public interface NetworkHardwareRepository {
 
             String[] hexadecimal = new String[hardwareAddress.length];
             for (int i = 0; i < hardwareAddress.length; i++) {
-                hexadecimal[i] = String.format("%02X", hardwareAddress[i]);
+                hexadecimal[i] = format("%02X", hardwareAddress[i]);
             }
             return String.join("-", hexadecimal);
         }

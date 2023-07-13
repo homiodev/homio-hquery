@@ -2,8 +2,15 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.1.1</version>
+    </parent>
+
     <packaging>jar</packaging>
-    <version>1.2.1-SNAPSHOT</version>
+    <version>1.2.2-SNAPSHOT</version>
+    <groupId>org.homio</groupId>
     <artifactId>homio-hquery</artifactId>
     <name>Homio hardware query api</name>
     <url>https://github.com/homiodev/homio-hquery</url>
@@ -19,6 +26,11 @@
             <groupId>org.springframework.boot</groupId>
             <scope>provided</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
@@ -32,6 +44,18 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <id>attach-sources</id>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -67,10 +91,4 @@
             </plugin>
         </plugins>
     </build>
-
-    <parent>
-        <artifactId>homio-dependency</artifactId>
-        <groupId>org.homio</groupId>
-        <version>2.5.0</version>
-    </parent>
 </project>

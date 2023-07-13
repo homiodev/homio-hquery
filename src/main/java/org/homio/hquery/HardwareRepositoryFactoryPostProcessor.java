@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -53,7 +52,6 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 
-@Log4j2
 public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostProcessor {
 
     public static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{.*?}");
@@ -75,7 +73,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         try {
             hardwareRepositoryThreadPool = beanFactory.getBean(HardwareRepositoryThreadPool.class);
         } catch (NoSuchBeanDefinitionException ex) {
-            log.info("No external thread pool found. use internal");
+            System.out.println("No external thread pool found. use internal");
             hardwareRepositoryThreadPool = new HardwareRepositoryThreadPool() {
                 private final ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(2,
                     20, 10, SECONDS, new ArrayBlockingQueue<>(100, true));
@@ -157,7 +155,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                     processCache.response = mapping.apply(result);
 
                 } catch (Exception ex) {
-                    log.error("Error while execute curl command <{}>. Msg: <{}>", command, ex.getMessage());
+                    System.err.printf("Error while execute curl command '%s'. Msg: '%s'%n", command, ex.getMessage());
                     processCache.errors.add(getErrorMessage(ex));
                     if (!curlQuery.ignoreOnError()) {
                         throw new HardwareException(processCache.errors, processCache.inputs, -1);
@@ -220,14 +218,14 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             processCache = cache.get(command);
         } else {
             processCache = new ProcessCache(hardwareQuery.cacheValid());
-            log.info("Execute: <{}>. Command: <{}>", hardwareQuery.name(), command);
+            System.out.printf("Execute: '%s'. Command: '%s'%n", hardwareQuery.name(), command);
             Process process;
             StreamGobbler streamGobbler = new StreamGobbler(hardwareQuery.name(), message -> {
                 processCache.inputs.add(message);
                 if (!message.isEmpty()) {
                     progressBar.progress(50D, message, false);
                     if (hardwareQuery.printOutput()) {
-                        log.info(message);
+                        System.out.println(message);
                     }
                 }
             }, message -> {
@@ -235,7 +233,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 if (!message.isEmpty()) {
                     progressBar.progress(50D, message, true);
                     if (hardwareQuery.printOutput()) {
-                        log.warn(message);
+                        System.out.println(message);
                     }
                 }
             });
@@ -275,7 +273,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         if (progressBar == null) {
             progressBar = (progress, message, isError) -> {
                 if (printOutput) {
-                    log.info(message);
+                    System.out.println(message);
                 }
             };
         }
@@ -347,13 +345,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             if (errorsHandler != null) {
                 String error = errors.isEmpty() ? errorsHandler.onRetCodeError() : String.join("; ", errors);
                 if (errorsHandler.logError()) {
-                    log.error(error);
+                    System.err.println(error);
                 }
                 if (errorsHandler.throwError()) {
                     throw new IllegalStateException(error);
                 }
             } else {
-                log.error("Error while execute command <{}>. Code: <{}>, Msg: <{}>", command, retValue,
+                System.err.printf("Error while execute command '%s'. Code: '%s', Msg: '%s'%n", command, retValue,
                     String.join(", ", errors));
                 if (!hardwareQuery.ignoreOnError()) {
                     throw new HardwareException(errors, inputs, retValue);
@@ -365,7 +363,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             if (!hardwareQuery.redirectErrorsToInputs()) {
                 for (String error : errors) {
                     if (!error.isEmpty()) {
-                        log.warn("Error <{}>", error);
+                        System.err.printf("Error '%s'%n", error);
                     }
                 }
             } else {
@@ -470,7 +468,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             }
         }
 
-        return input;
+        return obj;
     }
 
     private Object handleBucket(List<String> inputs, ListParse.LineParse lineParse, Field field) {
@@ -707,7 +705,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
                 @Override
                 public void prepare(ConfigurableListableBeanFactory beanFactory, Environment env) {
-                    pm = env.getProperty("project_manager");
+                    pm = env.getProperty("project_manager", env.getProperty("PACKAGEMANAGER", ""));
                     if (StringUtils.isEmpty(pm)) {
                         MachineHardwareRepository machineHardwareRepository = beanFactory.getBean(MachineHardwareRepository.class);
                         pm = machineHardwareRepository.getOs().getPackageManager();

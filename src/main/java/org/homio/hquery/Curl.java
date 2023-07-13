@@ -1,6 +1,5 @@
 package org.homio.hquery;
 
-import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,23 +20,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map.Entry;
 import java.util.function.Consumer;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
-import lombok.extern.log4j.Log4j2;
 import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.client.ClientHttpResponse;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.HttpMessageConverterExtractor;
 import org.springframework.web.client.RestTemplate;
 
-@Log4j2
 @RequiredArgsConstructor
 @SuppressWarnings("unused")
 public final class Curl {
@@ -86,19 +75,19 @@ public final class Curl {
     /**
      * Download file to byte array. Throw error if downloading exceeded maxSize
      *
-     * @param maxSize  -
-     * @param password -
-     * @param path     -
-     * @param user     -
+     * @param maxSize  - max bytes to read or null
+     * @param user     - user or null
+     * @param password - password or null
+     * @param path     - path not null
      * @return response
      */
     @SneakyThrows
     public static RawResponse download(String path, Integer maxSize, String user, String password) {
         HttpRequest request = HttpRequest.newBuilder().uri(new URI(path)).GET().build();
         String name = path.substring(path.lastIndexOf(System.lineSeparator()));
-        HttpResponse<byte[]> response;
+        HttpResponse<InputStream> response;
         if (user == null || password == null) {
-            response = HttpClient.newHttpClient().send(request, BodyHandlers.ofByteArray());
+            response = HttpClient.newHttpClient().send(request, BodyHandlers.ofInputStream());
         } else {
             request = HttpRequest.newBuilder().uri(request.uri()).POST(BodyPublishers.noBody()).build();
             response = HttpClient.newBuilder()
@@ -110,16 +99,27 @@ public final class Curl {
                                              password.toCharArray());
                                      }
                                  }).build()
-                                 .send(request, BodyHandlers.ofByteArray());
+                                 .send(request, BodyHandlers.ofInputStream());
             // 401 if wrong user/password
             if (response.statusCode() != 200) {
+                String body;
+                try (InputStream stream = response.body()) {
+                    body = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+                }
                 throw new RuntimeException("Error while download from <" + path + ">. Code: " +
-                    response.statusCode() + ". Msg: " + new String(response.body(), StandardCharsets.UTF_8));
+                    response.statusCode() + ". Msg: " + body);
             }
         }
 
-        return new RawResponse(response.body(),
-            response.headers().firstValue("Content-Type").orElse("text/plain"), Paths.get(path).getFileName().toString());
+        try (InputStream inputStream = response.body()) {
+            InputStream streamToRead = inputStream;
+            if (maxSize != null) {
+                streamToRead = new LimitedInputStream(inputStream, maxSize);
+            }
+
+            return new RawResponse(streamToRead.readAllBytes(),
+                response.headers().firstValue("Content-Type").orElse("text/plain"), Paths.get(path).getFileName().toString());
+        }
     }
 
     public static RawResponse download(String path) {
@@ -149,55 +149,15 @@ public final class Curl {
     }
 
     @SneakyThrows
-    public static <T> T getWithTimeout(String path, Class<T> returnType, int timeoutInSec) {
-        HttpRequest request = HttpRequest.newBuilder().uri(new URI(path)).timeout(Duration.ofSeconds(timeoutInSec)).GET().build();
-        HttpResponse<byte[]> response = HttpClient.newBuilder()
-                                                  .connectTimeout(Duration.ofSeconds(timeoutInSec))
-                                                  .build().send(request, BodyHandlers.ofByteArray());
-        if (returnType.equals(byte[].class)) {
-            return (T) response.body();
-        } else if (returnType.equals(String.class)) {
-            return (T) new String(response.body(), StandardCharsets.UTF_8);
+    public static <T> T getWithTimeout(String url, Class<T> returnType, int timeoutInSec) {
+        if (timeoutInSec <= 30) {
+            return get(url, returnType);
         }
-        HttpMessageConverterExtractor<T> responseExtractor =
-            new HttpMessageConverterExtractor<>(returnType, restTemplate.getMessageConverters());
-        return responseExtractor.extractData(new ClientHttpResponse() {
-            @Override
-            public HttpStatus getStatusCode() {
-                return HttpStatus.resolve(response.statusCode());
-            }
-
-            @Override
-            public int getRawStatusCode() {
-                return response.statusCode();
-            }
-
-            @Override
-            public String getStatusText() {
-                return "";
-            }
-
-            @Override
-            @SneakyThrows
-            public void close() {
-            }
-
-            @Override
-            public InputStream getBody() {
-                return new ByteArrayInputStream(response.body());
-            }
-
-            @Override
-            public HttpHeaders getHeaders() {
-                MultiValueMap<String, String> headers = new LinkedMultiValueMap<>(response.headers().map().size());
-                for (Entry<String, List<String>> entry : response.headers().map().entrySet()) {
-                    for (String value : entry.getValue()) {
-                        headers.add(entry.getKey(), value);
-                    }
-                }
-                return new HttpHeaders(headers);
-            }
-        });
+        RestTemplate restTemplate = new RestTemplateBuilder()
+            .setConnectTimeout(Duration.ofSeconds(timeoutInSec))
+            .setReadTimeout(Duration.ofSeconds(timeoutInSec))
+            .build();
+        return restTemplate.getForObject(url, returnType);
     }
 
     @SneakyThrows
@@ -262,9 +222,8 @@ public final class Curl {
                     readBytes += num;
                     if (readBytes / (double) ONE_MB > nextStep) {
                         nextStep++;
-                        double progress = (readBytes / fileSize * 100) * 0.9;
-                        progressBar.progress(progress, // max 90%
-                            "Downloading " + readBytes / ONE_MB + "Mb. of " + maxMb + " Mb. - " + String.format("%.2f", progress));
+                        double progress = (readBytes / fileSize * 100) * 0.99; // max 99%
+                        progressBar.progress(progress, "Downloading " + readBytes / ONE_MB + "Mb. of " + maxMb + " Mb.");
                     }
                 }
             };
@@ -275,6 +234,30 @@ public final class Curl {
             int read = super.read(b, off, len);
             progressHandler.accept(read);
             return read;
+        }
+    }
+
+    static class LimitedInputStream extends FilterInputStream {
+
+        private final int maxSizeBytes;
+        private int bytesRead;
+
+        public LimitedInputStream(InputStream in, int maxSizeBytes) {
+            super(in);
+            this.maxSizeBytes = maxSizeBytes;
+            this.bytesRead = 0;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (bytesRead >= maxSizeBytes) {
+                return -1; // Reached the maximum size, return end of stream
+            }
+            int data = super.read();
+            if (data != -1) {
+                bytesRead++;
+            }
+            return data;
         }
     }
 }

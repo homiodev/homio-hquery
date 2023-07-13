@@ -2,32 +2,42 @@ package org.homio.hquery.hardware.other;
 
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
 import org.homio.hquery.api.ListParse.LineParse;
 
 @Getter
 @ToString
 public class HardwareOs {
 
-    @LineParse("ID=(.*)")
+    @LineParse("ID=(?:\"(\\w+)\")?")
     private String id;
 
-    @LineParse("ID_LIKE=(.*)")
+    @LineParse("ID_LIKE=(?:\"(\\w+)\")?")
     private String idLike;
 
-    @LineParse("NAME=(.*)")
+    @LineParse("NAME=(?:\"(\\w+)\")?")
     private String name;
 
-    @LineParse("VERSION=(.*)")
+    @LineParse("VERSION=(?:\"(\\w+)\")?")
     private String version;
 
     public String getPackageManager() {
-        switch (StringUtils.defaultString(idLike, id)) {
-            case "debian":
-            case "ubuntu":
+        if (idLike != null) {
+            switch (idLike) {
+                case "debian", "ubuntu" -> {
+                    return "apt";
+                }
+                case "rhel fedora", "fedora", "centos" -> {
+                    return "dnf";
+                }
+            }
+        }
+        switch (id) {
+            case "debian", "ubuntu" -> {
                 return "apt";
-            case "rhel fedora":
-                return "yum";
+            }
+            case "fedora", "centos" -> {
+                return "dnf";
+            }
         }
         throw new IllegalStateException("Unable to find package manager");
     }
