@@ -15,6 +15,13 @@
     <name>Homio hardware query api</name>
     <url>https://github.com/homiodev/homio-hquery</url>
 
+    <scm>
+        <url>https://github.com/homiodev/${project.artifactId}</url>
+        <connection>scm:git:https://github.com/homiodev/${project.artifactId}.git</connection>
+        <developerConnection>scm:git:https://github.com/homiodev/${project.artifactId}.git</developerConnection>
+        <tag>homio-dependency-2.5.0</tag>
+    </scm>
+
     <dependencies>
         <dependency>
             <artifactId>commons-lang3</artifactId>
