@@ -11,14 +11,14 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -39,11 +39,13 @@ import org.homio.hquery.api.HardwareException;
 import org.homio.hquery.api.HardwareQuery;
 import org.homio.hquery.api.HardwareRepository;
 import org.homio.hquery.api.ListParse;
+import org.homio.hquery.api.ListParse.BooleanLineParse;
+import org.homio.hquery.api.ListParse.LineParse;
+import org.homio.hquery.api.ListParse.LineParsers;
 import org.homio.hquery.api.RawParse;
 import org.homio.hquery.api.SplitParse;
 import org.homio.hquery.hardware.other.MachineHardwareRepository;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -69,21 +71,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     @SneakyThrows
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
         Environment env = beanFactory.getBean(Environment.class);
-        HardwareRepositoryThreadPool hardwareRepositoryThreadPool;
-        try {
-            hardwareRepositoryThreadPool = beanFactory.getBean(HardwareRepositoryThreadPool.class);
-        } catch (NoSuchBeanDefinitionException ex) {
-            System.out.println("No external thread pool found. use internal");
-            hardwareRepositoryThreadPool = new HardwareRepositoryThreadPool() {
-                private final ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(2,
-                    20, 10, SECONDS, new ArrayBlockingQueue<>(100, true));
-
-                @Override
-                public Future<?> submit(String name, Runnable task) {
-                    return threadPoolExecutor.submit(task);
-                }
-            };
-        }
         HQueryExecutor hQueryExecutor = buildHQueryExecutor();
         List<Class<?>> classes = getClassesWithAnnotation();
         for (Class<?> aClass : classes) {
@@ -219,7 +206,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         } else {
             processCache = new ProcessCache(hardwareQuery.cacheValid());
             System.out.printf("Execute: '%s'. Command: '%s'%n", hardwareQuery.name(), command);
-            Process process;
+            ProcessBuilder processBuilder;
             StreamGobbler streamGobbler = new StreamGobbler(hardwareQuery.name(), message -> {
                 processCache.inputs.add(message);
                 if (!message.isEmpty()) {
@@ -238,15 +225,23 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 }
             });
             try {
+                File dir = null;
                 if (!StringUtils.isEmpty(hardwareQuery.dir())) {
-                    File dir = new File(replaceStringWithArgs(hardwareQuery.dir(), args, method));
-                    process = hQueryExecutor.createProcess(cmdParts, null, dir);
-                } else {
-                    process = hQueryExecutor.createProcess(cmdParts, null, null);
+                    dir = new File(replaceStringWithArgs(hardwareQuery.dir(), args, method));
                 }
+                if (cmdParts.length > 1) {
+                    processBuilder = new ProcessBuilder(cmdParts);
+                } else if (SystemUtils.IS_OS_WINDOWS) {
+                    processBuilder = new ProcessBuilder("cmd.exe", "/C", cmdParts[0]);
+                } else {
+                    processBuilder = new ProcessBuilder("/bin/sh", "-c", cmdParts[0]);
+                }
+                processBuilder.directory(dir);
 
+                Process process = processBuilder.start();
                 streamGobbler.stream(process);
 
+                Thread.sleep(10);
                 if (!process.waitFor(maxWaitTimeout, SECONDS)) {
                     process.destroy();
                 }
@@ -337,6 +332,9 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 case "boolean" -> {
                     return retValue == 0;
                 }
+                case "void" -> {
+                    return null;
+                }
             }
         }
 
@@ -370,13 +368,21 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 inputs.addAll(errors);
             }
             inputs = Collections.unmodifiableCollection(inputs).stream().map(String::trim).collect(Collectors.toList());
-            ListParse listParse = method.getAnnotation(ListParse.class);
-            ListParse.LineParse lineParse = method.getAnnotation(ListParse.LineParse.class);
-            ListParse.BooleanLineParse booleanParse = method.getAnnotation(ListParse.BooleanLineParse.class);
-            ListParse.LineParsers lineParsers = method.getAnnotation(ListParse.LineParsers.class);
-            RawParse rawParse = method.getAnnotation(RawParse.class);
 
-            if (listParse != null) {
+            if (returnType.isAssignableFrom(String.class)) {
+                return String.join("", inputs);
+            } else if (Collection.class.isAssignableFrom(returnType)) {
+                if (List.class.isAssignableFrom(returnType)) {
+                    return inputs;
+                } else if (Set.class.isAssignableFrom(returnType)) {
+                    return new HashSet<>(inputs);
+                } else {
+                    throw new IllegalStateException("Unsupported return type: " + returnType.getSimpleName());
+                }
+            }
+
+            if (method.isAnnotationPresent(ListParse.class)) {
+                ListParse listParse = method.getAnnotation(ListParse.class);
                 String delimiter = listParse.delimiter();
                 List<List<String>> buckets = new ArrayList<>();
                 List<String> currentBucket = null;
@@ -396,14 +402,14 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                     result.add(handleBucket(bucket, genericClass));
                 }
                 return result;
-            } else if (lineParse != null) {
-                return handleBucket(inputs, lineParse, null);
-            } else if (lineParsers != null) {
-                return handleBucket(inputs, lineParsers);
-            } else if (booleanParse != null) {
-                return handleBucket(inputs, booleanParse);
-            } else if (rawParse != null) {
-                return handleBucket(inputs, rawParse, null);
+            } else if (method.isAnnotationPresent(LineParse.class)) {
+                return handleBucket(inputs, method.getDeclaredAnnotation(LineParse.class), null);
+            } else if (method.isAnnotationPresent(LineParsers.class)) {
+                return handleBucket(inputs, method.getAnnotation(ListParse.LineParsers.class));
+            } else if (method.isAnnotationPresent(BooleanLineParse.class)) {
+                return handleBucket(inputs, method.getAnnotation(BooleanLineParse.class));
+            } else if (method.isAnnotationPresent(RawParse.class)) {
+                return handleBucket(inputs, method.getAnnotation(RawParse.class), null);
             } else {
                 return handleBucket(inputs, returnType);
             }
@@ -413,15 +419,9 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     @SneakyThrows
     private Object handleBucket(List<String> input, Class<?> genericClass) {
-        if (genericClass.isPrimitive()) {
-            if ("void".equals(genericClass.getName())) {
-                return null;
-            }
-        }
         Object obj = newInstance(genericClass);
 
         boolean handleFields = false;
-
         SplitParse splitParse = genericClass.getDeclaredAnnotation(SplitParse.class);
         if (splitParse != null) {
             for (String item : input) {
@@ -467,8 +467,11 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 return String.join("", input);
             }
         }
+        if (handleFields) {
+            return obj;
+        }
 
-        return obj;
+        throw new IllegalStateException("Unsupported return type: " + genericClass.getSimpleName());
     }
 
     private Object handleBucket(List<String> inputs, ListParse.LineParse lineParse, Field field) {
@@ -636,11 +639,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             && aClass.isAssignableFrom(apiParams[i][0].getClass());
     }
 
-    public interface HardwareRepositoryThreadPool {
-
-        Future<?> submit(String name, Runnable runnable);
-    }
-
     @RequiredArgsConstructor
     private static class ProcessCache {
 
@@ -661,18 +659,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 }
 
                 @Override
-                @SneakyThrows
-                public Process createProcess(String[] cmdParts, String[] env, File dir) {
-                    if (dir != null) {
-                        return Runtime.getRuntime().exec(cmdParts, env, dir);
-                    } else if (cmdParts.length == 1) {
-                        return Runtime.getRuntime().exec("cmd.exe /C " + cmdParts[0]);
-                    } else {
-                        return Runtime.getRuntime().exec(cmdParts);
-                    }
-                }
-
-                @Override
                 public void prepare(ConfigurableListableBeanFactory beanFactory, Environment env) {
 
                 }
@@ -689,18 +675,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 @Override
                 public String updateCommand(String cmd) {
                     return cmd.contains("$PM") ? cmd.replace("$PM", pm) : cmd;
-                }
-
-                @Override
-                @SneakyThrows
-                public Process createProcess(String[] cmdParts, String[] env, File dir) {
-                    if (dir != null) {
-                        return Runtime.getRuntime().exec(cmdParts, env, dir);
-                    } else if (cmdParts.length == 1) {
-                        return Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmdParts[0]});
-                    } else {
-                        return Runtime.getRuntime().exec(cmdParts);
-                    }
                 }
 
                 @Override

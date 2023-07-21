@@ -11,12 +11,13 @@ import lombok.SneakyThrows;
 @RequiredArgsConstructor
 public class StreamGobbler {
 
+    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
     private final String name;
     private final Consumer<String> inputConsumer;
     private final Consumer<String> errorConsumer;
+
     private Future<?> inputFuture = null;
     private Future<?> errorFuture = null;
-    private ExecutorService executorService;
 
     public static void streamAndStop(Process process, int waitTimeoutBeforeStopMs, int waitStopStreamsTimeoutMs) {
         StreamGobbler killStreamGobbler = new StreamGobbler("kill-sig-" + process.pid(), System.out::println, System.err::println);
@@ -25,7 +26,6 @@ public class StreamGobbler {
     }
 
     public void stream(Process process) {
-        executorService = Executors.newFixedThreadPool(2);
         errorFuture = executorService.submit(new StreamReader(name + "/error stream reader",
             process.getErrorStream(), errorConsumer));
         inputFuture = executorService.submit(new StreamReader(name + "/input stream reader",
@@ -34,7 +34,7 @@ public class StreamGobbler {
 
     @SneakyThrows
     public void stopStream(int waitTimeoutBeforeStopMs, int waitStopStreamsTimeoutMs) {
-        if (executorService != null) {
+        if (errorFuture != null && inputFuture != null) {
             if (waitTimeoutBeforeStopMs > 0) {
                 try {
                     errorFuture.get(waitTimeoutBeforeStopMs, TimeUnit.MILLISECONDS);
