@@ -2,7 +2,8 @@ package org.homio.hquery.hardware.network;
 
 import static java.lang.String.format;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -23,8 +24,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-import lombok.Getter;
-import lombok.Setter;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -99,26 +98,27 @@ public interface NetworkHardwareRepository {
                    value = "grep -r 'psk=' /etc/wpa_supplicant/wpa_supplicant.conf | cut -d = -f 2 | cut -d \\\" -f 2")
     String getWifiPassword();
 
-    @CurlQuery(value = "http://checkip.amazonaws.com", cacheValid = 3600, ignoreOnError = true,
+    @CurlQuery(value = "http://checkip.amazonaws.com", cache = true, ignoreOnError = true,
                mapping = TrimEndMapping.class, valueOnError = "127.0.0.1")
     String getOuterIpAddress();
 
-    @CurlQuery(value = "http://ip-api.com/json/:ip", cache = true, ignoreOnError = true)
-    IpGeoLocation getIpGeoLocation(@HQueryParam("ip") String ip);
+    @CurlQuery(value = "http://ip-api.com/json/:ip?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,"
+        + "lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query",
+               cache = true, ignoreOnError = true)
+    JsonNode getIpGeoLocation(@HQueryParam("ip") String ip);
 
     @CurlQuery(value = "https://geocode.xyz/:city?json=1", cache = true, ignoreOnError = true)
-    CityToGeoLocation findCityGeolocation(@HQueryParam("city") String city);
+    JsonNode getCityGeolocation(@HQueryParam("city") String city);
 
-    default CityToGeoLocation findCityGeolocationOrThrowException(String city) {
-        CityToGeoLocation cityGeolocation = findCityGeolocation(city);
-        if (cityGeolocation.error != null) {
-            String error = cityGeolocation.error.description;
-            if ("15. Your request did not produce any results.".equals(error)) {
-                error = "Unable to find city: " + city + ". Please, check city from site: https://geocode.xyz";
-            }
-            throw new IllegalArgumentException(error);
+    @CurlQuery(value = "https://restcountries.com/v2/name/:country", cache = true, ignoreOnError = true)
+    JsonNode getCountryInformationInternal(@HQueryParam("country") String country);
+
+    default JsonNode getCountryInformation(String country) {
+        JsonNode jsonNode = getCountryInformationInternal(country);
+        if (jsonNode instanceof ArrayNode array && jsonNode.size() == 1) {
+            return array.iterator().next();
         }
-        return cityGeolocation;
+        return jsonNode;
     }
 
     default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Consumer<String> log, Set<Integer> ports,
@@ -258,39 +258,6 @@ public interface NetworkHardwareRepository {
             }
         }
         return Optional.empty();
-    }
-
-    @Getter
-    class CityToGeoLocation {
-
-        private String longt;
-        private String latt;
-        private Error error;
-
-        @Setter
-        private static class Error {
-
-            private String description;
-        }
-    }
-
-    @Getter
-    class IpGeoLocation {
-
-        private final String country = "unknown";
-        private final String countryCode = "unknown";
-        private final String region = "unknown";
-        private final String regionName = "unknown";
-        private final String city = "unknown";
-        private final Integer lat = 0;
-        private final Integer lon = 0;
-        private final String timezone = "unknown";
-
-        @Override
-        @SneakyThrows
-        public String toString() {
-            return new ObjectMapper().writeValueAsString(this);
-        }
     }
 
     class TrimEndMapping implements Function<Object, Object> {

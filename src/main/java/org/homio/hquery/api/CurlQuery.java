@@ -18,7 +18,12 @@ public @interface CurlQuery {
 
     boolean cache() default false;
 
-    int cacheValid() default 0;
+    /**
+     * Cache valid in seconds. Default 24 hours
+     *
+     * @return sec cache valid
+     */
+    int cacheValidSec() default 86_400;
 
     boolean ignoreOnError() default false;
 

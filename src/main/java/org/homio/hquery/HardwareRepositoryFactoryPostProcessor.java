@@ -2,6 +2,8 @@ package org.homio.hquery;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
@@ -129,20 +131,19 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             String command = replaceEnvValues(argCmd, env::getProperty);
             ProcessCache processCache;
 
-            if ((curlQuery.cache() || curlQuery.cacheValid() > 0)
+            if ((curlQuery.cache() && curlQuery.cacheValidSec() > 0)
                 && cache.containsKey(command)
-                && (curlQuery.cacheValid() < 1 ||
-                (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec)) {
+                && (System.currentTimeMillis() - cache.get(command).executedTime) / 1000 < cache.get(command).cacheValidInSec) {
                 processCache = cache.get(command);
             } else {
-                processCache = new ProcessCache(curlQuery.cacheValid());
+                processCache = new ProcessCache(curlQuery.cacheValidSec());
                 try {
                     Object result = Curl.getWithTimeout(command, method.getReturnType(), curlQuery.maxSecondsTimeout());
                     Function<Object, Object> mapping = newInstance(curlQuery.mapping());
                     processCache.response = mapping.apply(result);
 
                 } catch (Exception ex) {
-                    System.err.printf("Error while execute curl command '%s'. Msg: '%s'%n", command, ex.getMessage());
+                    System.err.printf("Error while execute curl command '%s'. Msg: '%s'%n", command, getErrorMessage(ex));
                     processCache.errors.add(getErrorMessage(ex));
                     if (!curlQuery.ignoreOnError()) {
                         throw new HardwareException(processCache.errors, processCache.inputs, -1);
@@ -152,11 +153,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                     processCache.retValue = -1;
 
                     // to avoid NPE instantiate empty class
-                    if (!method.getReturnType().isAssignableFrom(String.class)) {
+                    if (method.getReturnType().isAssignableFrom(JsonNode.class)) {
+                        processCache.response = new ObjectMapper().createObjectNode().put("error", getErrorMessage(ex));
+                    } else if (!method.getReturnType().isAssignableFrom(String.class)) {
                         processCache.response = newInstance(method.getReturnType());
                     }
                 }
-                if (processCache.errors.isEmpty() && curlQuery.cache() || curlQuery.cacheValid() > 0) {
+                if (processCache.errors.isEmpty() && curlQuery.cache() && curlQuery.cacheValidSec() > 0) {
                     cache.put(command, processCache);
                 }
             }
