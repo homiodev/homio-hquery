@@ -1,14 +1,19 @@
 package org.homio.hquery;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.Nullable;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.util.function.ThrowingBiFunction;
+import org.springframework.web.client.RestTemplate;
+
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Authenticator;
-import java.net.HttpURLConnection;
-import java.net.PasswordAuthentication;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
+import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
@@ -20,12 +25,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.web.client.RestTemplate;
 
 @RequiredArgsConstructor
 @SuppressWarnings("unused")
@@ -33,13 +35,18 @@ public final class Curl {
 
     public static final int ONE_MB = 1000000;
 
-    public static final RestTemplate restTemplate;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    private static final RestTemplate restTemplate;
 
     static {
         restTemplate = new RestTemplateBuilder()
-            .setConnectTimeout(Duration.ofSeconds(10))
-            .setReadTimeout(Duration.ofSeconds(60))
-            .build();
+                .setConnectTimeout(Duration.ofSeconds(10))
+                .setReadTimeout(Duration.ofSeconds(60))
+                .build();
     }
 
     public static <T> T get(String url, Class<T> responseType, Object... uriVariables) {
@@ -47,7 +54,7 @@ public final class Curl {
     }
 
     public static <T> T post(String url, Object request, Class<T> responseType,
-        Object... uriVariables) {
+                             Object... uriVariables) {
         return restTemplate.postForObject(url, request, responseType, uriVariables);
     }
 
@@ -63,8 +70,54 @@ public final class Curl {
         }
     }
 
-    public static void downloadIfSizeNotMatch(Path path, String url) {
+    @SneakyThrows
+    public static HttpRequest createPostRequest(String url, Object body) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url));
+        if (body != null) {
+            String value = body instanceof String ? (String) body : objectMapper.writeValueAsString(body);
+            builder.POST(HttpRequest.BodyPublishers.ofString(value));
+        } else {
+            builder.POST(HttpRequest.BodyPublishers.noBody());
+        }
+        return builder.build();
+    }
 
+    @SneakyThrows
+    public static HttpRequest createGetRequest(String url) {
+        return createGetRequest(url, null);
+    }
+
+    @SneakyThrows
+    public static HttpRequest createGetRequest(String url, @Nullable Map<String, String> headers) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url));
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                builder.header(entry.getKey(), entry.getValue());
+            }
+        }
+        return builder.GET().build();
+    }
+
+    public static <T> void sendAsync(HttpRequest httpRequest, Class<T> responseType, BiConsumer<T, Integer> handler) {
+        HTTP_CLIENT.sendAsync(httpRequest, BodyHandlers.ofString()).thenAccept(response -> {
+            try {
+                handler.accept(objectMapper.readValue(response.body(), responseType), response.statusCode());
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @SneakyThrows
+    public static <T> void sendSync(HttpRequest httpRequest, Class<T> responseType, BiConsumer<T, Integer> handler) {
+        HttpResponse<String> response = HTTP_CLIENT.send(httpRequest, BodyHandlers.ofString());
+        handler.accept(objectMapper.readValue(response.body(), responseType), response.statusCode());
+    }
+
+    @SneakyThrows
+    public static <T, R> R sendSync(HttpRequest httpRequest, Class<T> responseType, ThrowingBiFunction<T, Integer, R> handler) {
+        HttpResponse<String> response = HTTP_CLIENT.send(httpRequest, BodyHandlers.ofString());
+        return handler.apply(objectMapper.readValue(response.body(), responseType), response.statusCode());
     }
 
     @SneakyThrows
@@ -87,19 +140,19 @@ public final class Curl {
         String name = path.substring(path.lastIndexOf(System.lineSeparator()));
         HttpResponse<InputStream> response;
         if (user == null || password == null) {
-            response = HttpClient.newHttpClient().send(request, BodyHandlers.ofInputStream());
+            response = HTTP_CLIENT.send(request, BodyHandlers.ofInputStream());
         } else {
             request = HttpRequest.newBuilder().uri(request.uri()).POST(BodyPublishers.noBody()).build();
             response = HttpClient.newBuilder()
-                                 .authenticator(new Authenticator() {
-                                     @Override
-                                     protected PasswordAuthentication getPasswordAuthentication() {
-                                         return new PasswordAuthentication(
-                                             user,
-                                             password.toCharArray());
-                                     }
-                                 }).build()
-                                 .send(request, BodyHandlers.ofInputStream());
+                    .authenticator(new Authenticator() {
+                        @Override
+                        protected PasswordAuthentication getPasswordAuthentication() {
+                            return new PasswordAuthentication(
+                                    user,
+                                    password.toCharArray());
+                        }
+                    }).build()
+                    .send(request, BodyHandlers.ofInputStream());
             // 401 if wrong user/password
             if (response.statusCode() != 200) {
                 String body;
@@ -107,7 +160,7 @@ public final class Curl {
                     body = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
                 }
                 throw new RuntimeException("Error while download from <" + path + ">. Code: " +
-                    response.statusCode() + ". Msg: " + body);
+                        response.statusCode() + ". Msg: " + body);
             }
         }
 
@@ -118,7 +171,7 @@ public final class Curl {
             }
 
             return new RawResponse(streamToRead.readAllBytes(),
-                response.headers().firstValue("Content-Type").orElse("text/plain"), Paths.get(path).getFileName().toString());
+                    response.headers().firstValue("Content-Type").orElse("text/plain"), Paths.get(path).getFileName().toString());
         }
     }
 
@@ -154,9 +207,9 @@ public final class Curl {
             return get(url, returnType);
         }
         RestTemplate restTemplate = new RestTemplateBuilder()
-            .setConnectTimeout(Duration.ofSeconds(timeoutInSec))
-            .setReadTimeout(Duration.ofSeconds(timeoutInSec))
-            .build();
+                .setConnectTimeout(Duration.ofSeconds(timeoutInSec))
+                .setReadTimeout(Duration.ofSeconds(timeoutInSec))
+                .build();
         return restTemplate.getForObject(url, returnType);
     }
 
