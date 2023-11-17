@@ -9,7 +9,7 @@
     </parent>
 
     <packaging>jar</packaging>
-    <version>1.2.5</version>
+    <version>1.2.6-SNAPSHOT</version>
     <groupId>org.homio</groupId>
     <artifactId>homio-hquery</artifactId>
     <name>Homio hardware query api</name>
@@ -18,7 +18,7 @@
         <url>https://github.com/homiodev/${project.artifactId}</url>
         <connection>scm:git:https://github.com/homiodev/${project.artifactId}.git</connection>
         <developerConnection>scm:git:https://github.com/homiodev/${project.artifactId}.git</developerConnection>
-        <tag>homio-hquery-1.2.5</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <dependencies>
