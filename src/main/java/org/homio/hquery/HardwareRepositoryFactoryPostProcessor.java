@@ -128,7 +128,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         CurlQuery curlQuery = method.getDeclaredAnnotation(CurlQuery.class);
         if (curlQuery != null) {
             String argCmd = replaceStringWithArgs(curlQuery.value(), args, method);
-            String command = replaceEnvValues(argCmd, env::getProperty);
+            String command = replaceValues(argCmd, env::getProperty);
             ProcessCache processCache;
 
             if ((curlQuery.cache() && curlQuery.cacheValidSec() > 0)
@@ -214,17 +214,11 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                 processCache.inputs.add(message);
                 if (!message.isEmpty()) {
                     progressBar.progress(50D, message, false);
-                    if (hardwareQuery.printOutput()) {
-                        System.out.println(message);
-                    }
                 }
             }, message -> {
                 processCache.errors.add(message);
                 if (!message.isEmpty()) {
                     progressBar.progress(50D, message, true);
-                    if (hardwareQuery.printOutput()) {
-                        System.out.println(message);
-                    }
                 }
             });
             try {
@@ -271,7 +265,11 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         if (progressBar == null) {
             progressBar = (progress, message, isError) -> {
                 if (printOutput) {
-                    System.out.println(message);
+                    if (isError) {
+                        System.err.println(message);
+                    } else {
+                        System.out.println(message);
+                    }
                 }
             };
         }
@@ -283,7 +281,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         String[] values = hQueryExecutor.getValues(hardwareQuery);
         Stream.of(values).filter(cmd -> !cmd.isEmpty()).forEach(cmd -> {
             String argCmd = replaceStringWithArgs(cmd, args, method);
-            String envCmd = replaceEnvValues(argCmd, env::getProperty);
+            String envCmd = replaceValues(argCmd, env::getProperty);
             parts.add(hQueryExecutor.updateCommand(envCmd));
         });
         return parts;
@@ -374,14 +372,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
             if (returnType.isAssignableFrom(String.class)) {
                 return String.join("", inputs);
-            } else if (Collection.class.isAssignableFrom(returnType)) {
-                if (List.class.isAssignableFrom(returnType)) {
-                    return inputs;
-                } else if (Set.class.isAssignableFrom(returnType)) {
-                    return new HashSet<>(inputs);
-                } else {
-                    throw new IllegalStateException("Unsupported return type: " + returnType.getSimpleName());
-                }
             }
 
             if (method.isAnnotationPresent(ListParse.class)) {
@@ -422,6 +412,16 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     @SneakyThrows
     private Object handleBucket(List<String> input, Class<?> genericClass) {
+        if (Collection.class.isAssignableFrom(genericClass)) {
+            if (List.class.isAssignableFrom(genericClass)) {
+                return input;
+            } else if (Set.class.isAssignableFrom(genericClass)) {
+                return new HashSet<>(input);
+            } else {
+                throw new IllegalStateException("Unsupported return type: " + genericClass.getSimpleName());
+            }
+        }
+
         Object obj = newInstance(genericClass);
 
         boolean handleFields = false;
@@ -482,7 +482,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             if (input.matches(lineParse.value())) {
                 String group = findGroup(input, lineParse.value(), lineParse.group());
                 if (group != null) {
-                    return handleType(group, field.getType());
+                    return handleType(group.replaceAll("\"", ""), field.getType());
                 }
             }
         }
@@ -570,20 +570,15 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return foundClasses;
     }
 
-    private static String replaceEnvValues(String text, BiFunction<String, String, String> propertyGetter) {
-        return replaceValues(ENV_PATTERN, text, propertyGetter);
-    }
-
-    private static String replaceValues(Pattern pattern, String text,
-        BiFunction<String, String, String> propertyGetter) {
-        Matcher matcher = pattern.matcher(text);
+    private static String replaceValues(String text, BiFunction<String, String, String> propertyGetter) {
+        Matcher matcher = HardwareRepositoryFactoryPostProcessor.ENV_PATTERN.matcher(text);
         StringBuilder noteBuffer = new StringBuilder();
         while (matcher.find()) {
             String group = matcher.group();
             matcher.appendReplacement(noteBuffer, getEnvProperty(group, propertyGetter));
         }
         matcher.appendTail(noteBuffer);
-        return noteBuffer.length() == 0 ? text : noteBuffer.toString();
+        return noteBuffer.isEmpty() ? text : noteBuffer.toString();
     }
 
     @SneakyThrows

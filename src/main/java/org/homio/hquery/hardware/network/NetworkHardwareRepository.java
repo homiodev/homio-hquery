@@ -7,12 +7,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -267,4 +270,53 @@ public interface NetworkHardwareRepository {
             return ((String) o).trim().replaceAll("\n", "");
         }
     }
+
+    @SneakyThrows
+    static List<NetworkInterface> getActiveNetworkInterfaces() {
+        List<NetworkInterface> ifaces = new ArrayList<>();
+        for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
+            NetworkInterface iface = en.nextElement();
+            try {
+                if (!iface.isUp() || iface.isLoopback() || iface.isPointToPoint()) {
+                    continue;
+                }
+            } catch (final SocketException ex) {
+                continue;
+            }
+            ifaces.add(iface);
+        }
+        return ifaces;
+    }
+
+    static Collection<CidrAddress> getAllInterfaceAddresses() {
+        Collection<CidrAddress> interfaceIPs = new ArrayList<>();
+        Enumeration<NetworkInterface> en;
+        try {
+            en = NetworkInterface.getNetworkInterfaces();
+        } catch (SocketException ex) {
+            return interfaceIPs;
+        }
+
+        while (en.hasMoreElements()) {
+            NetworkInterface networkInterface = en.nextElement();
+
+            try {
+                if (!networkInterface.isUp() || networkInterface.isLoopback()) {
+                    continue;
+                }
+            } catch (SocketException ignored) {
+                continue;
+            }
+
+            for (InterfaceAddress cidr : networkInterface.getInterfaceAddresses()) {
+                final InetAddress address = cidr.getAddress();
+                assert address != null;
+                interfaceIPs.add(new CidrAddress(address, cidr.getNetworkPrefixLength()));
+            }
+        }
+
+        return interfaceIPs;
+    }
+
+    record CidrAddress(InetAddress address, short prefix) {}
 }

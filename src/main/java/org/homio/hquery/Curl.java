@@ -3,19 +3,18 @@ package org.homio.hquery;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Nullable;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.util.function.ThrowingBiFunction;
-import org.springframework.web.client.RestTemplate;
-
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.*;
+import java.net.Authenticator;
+import java.net.HttpURLConnection;
+import java.net.PasswordAuthentication;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLConnection;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpRequest.BodyPublisher;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
@@ -28,6 +27,12 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.util.function.ThrowingBiFunction;
+import org.springframework.web.client.RestTemplate;
 
 @RequiredArgsConstructor
 @SuppressWarnings("unused")
@@ -65,21 +70,42 @@ public final class Curl {
     @SneakyThrows
     public static void download(String url, Path targetPath) {
         URLConnection connection = getUrlConnection(new URL(url));
+        Files.createDirectories(targetPath.getParent());
         try (InputStream stream = connection.getInputStream()) {
             Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
+    public static HttpRequest createPostRequest(String url) {
+        return createPostRequest(url, null);
+    }
+
     @SneakyThrows
-    public static HttpRequest createPostRequest(String url, Object body) {
+    public static HttpRequest createPostRequest(String url, @Nullable Object body) {
         HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url));
+        return builder.POST(buildBodyPublisher(body)).build();
+    }
+
+    @SneakyThrows
+    public static HttpRequest createPutRequest(String url, @Nullable Object body) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url));
+        return builder.PUT(buildBodyPublisher(body)).build();
+    }
+
+    public static BodyPublisher buildBodyPublisher(Object body) throws JsonProcessingException {
+        BodyPublisher bodyPublisher;
         if (body != null) {
             String value = body instanceof String ? (String) body : objectMapper.writeValueAsString(body);
-            builder.POST(HttpRequest.BodyPublishers.ofString(value));
+            bodyPublisher = BodyPublishers.ofString(value);
         } else {
-            builder.POST(HttpRequest.BodyPublishers.noBody());
+            bodyPublisher = BodyPublishers.noBody();
         }
-        return builder.build();
+        return bodyPublisher;
+    }
+
+    @SneakyThrows
+    public static HttpRequest createDeleteRequest(String url) {
+        return HttpRequest.newBuilder().uri(URI.create(url)).DELETE().build();
     }
 
     @SneakyThrows
@@ -102,8 +128,8 @@ public final class Curl {
         HTTP_CLIENT.sendAsync(httpRequest, BodyHandlers.ofString()).thenAccept(response -> {
             try {
                 handler.accept(objectMapper.readValue(response.body(), responseType), response.statusCode());
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
+            } catch (JsonProcessingException ex) {
+                handler.accept(null, response.statusCode());
             }
         });
     }
@@ -136,8 +162,9 @@ public final class Curl {
      */
     @SneakyThrows
     public static RawResponse download(String path, Integer maxSize, String user, String password) {
-        HttpRequest request = HttpRequest.newBuilder().uri(new URI(path)).GET().build();
-        String name = path.substring(path.lastIndexOf(System.lineSeparator()));
+        URI uri = new URI(path);
+        HttpRequest request = HttpRequest.newBuilder().uri(uri).GET().build();
+        String name = Paths.get(uri.getPath()).getFileName().toString();
         HttpResponse<InputStream> response;
         if (user == null || password == null) {
             response = HTTP_CLIENT.send(request, BodyHandlers.ofInputStream());
@@ -170,8 +197,8 @@ public final class Curl {
                 streamToRead = new LimitedInputStream(inputStream, maxSize);
             }
 
-            return new RawResponse(streamToRead.readAllBytes(),
-                    response.headers().firstValue("Content-Type").orElse("text/plain"), Paths.get(path).getFileName().toString());
+            String contentType = response.headers().firstValue("Content-Type").orElse("text/plain");
+            return new RawResponse(streamToRead.readAllBytes(), contentType, name);
         }
     }
 
@@ -187,6 +214,8 @@ public final class Curl {
     @SneakyThrows
     public static void downloadWithProgress(String urlStr, Path targetPath, ProgressBar progressBar) {
         progressBar.progress(1, "Checking file size...");
+        Files.createDirectories(targetPath.getParent());
+        Files.deleteIfExists(targetPath);
         URL url = new URL(urlStr);
         double fileSize = getFileSize(url);
         // download without progress if less than 2 megabytes
@@ -196,7 +225,11 @@ public final class Curl {
         }
         int maxMb = (int) (fileSize / ONE_MB);
         URLConnection connection = getUrlConnection(url);
-        try (InputStream fileInputStream = new TransformFilterInputStream(connection.getInputStream(), progressBar, fileSize, maxMb)) {
+        String fileName = urlStr;
+        try {
+            fileName = Paths.get(url.getPath()).getFileName().toString();
+        } catch (Exception ignore) {}
+        try (InputStream fileInputStream = new TransformFilterInputStream(connection.getInputStream(), progressBar, fileSize, maxMb, fileName)) {
             Files.copy(fileInputStream, targetPath);
         }
     }
@@ -265,7 +298,7 @@ public final class Curl {
         private final Consumer<Integer> progressHandler;
         private int readBytes = 0;
 
-        protected TransformFilterInputStream(InputStream in, ProgressBar progressBar, double fileSize, int maxMb) {
+        protected TransformFilterInputStream(InputStream in, ProgressBar progressBar, double fileSize, int maxMb, String fileName) {
             super(in);
             this.progressHandler = new Consumer<>() {
                 int nextStep = 1;
@@ -276,7 +309,7 @@ public final class Curl {
                     if (readBytes / (double) ONE_MB > nextStep) {
                         nextStep++;
                         double progress = (readBytes / fileSize * 100) * 0.99; // max 99%
-                        progressBar.progress(progress, "Downloading " + readBytes / ONE_MB + "Mb. of " + maxMb + " Mb.");
+                        progressBar.progress(progress, "Downloading %s %dMb. of %d Mb.".formatted(fileName, readBytes / ONE_MB, maxMb));
                     }
                 }
             };

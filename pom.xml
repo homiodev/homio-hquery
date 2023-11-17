@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.1.1</version>
+        <version>3.1.5</version>
     </parent>
 
     <packaging>jar</packaging>
@@ -13,13 +13,12 @@
     <groupId>org.homio</groupId>
     <artifactId>homio-hquery</artifactId>
     <name>Homio hardware query api</name>
-    <url>https://github.com/homiodev/homio-hquery</url>
 
     <scm>
         <url>https://github.com/homiodev/${project.artifactId}</url>
         <connection>scm:git:https://github.com/homiodev/${project.artifactId}.git</connection>
         <developerConnection>scm:git:https://github.com/homiodev/${project.artifactId}.git</developerConnection>
-        <tag>homio-dependency-2.5.0</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <dependencies>
@@ -40,6 +39,10 @@
         </dependency>
     </dependencies>
 
+    <properties>
+        <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
+    </properties>
+
     <build>
         <resources>
             <resource>
@@ -54,7 +57,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
-                <version>1.6</version>
+                <version>3.1.0</version>
                 <executions>
                     <execution>
                         <id>sign-artifacts</id>

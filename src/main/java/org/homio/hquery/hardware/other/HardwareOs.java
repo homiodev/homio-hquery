@@ -8,17 +8,23 @@ import org.homio.hquery.api.ListParse.LineParse;
 @ToString
 public class HardwareOs {
 
-    @LineParse("ID=(?:\"(\\w+)\")?")
+    @LineParse("ID=(.*)")
     private String id;
 
-    @LineParse("ID_LIKE=(?:\"(\\w+)\")?")
+    @LineParse("ID_LIKE=(.*)")
     private String idLike;
 
-    @LineParse("NAME=(?:\"(\\w+)\")?")
+    @LineParse("NAME=(.*)")
     private String name;
 
-    @LineParse("VERSION=(?:\"(\\w+)\")?")
+    @LineParse("PRETTY_NAME=(.*)")
+    private String prettyName;
+
+    @LineParse("VERSION=(.*)")
     private String version;
+
+    @LineParse("VERSION_CODENAME=(.*)")
+    private String versionCodename;
 
     public String getPackageManager() {
         if (idLike != null) {
