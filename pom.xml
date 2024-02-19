@@ -9,7 +9,7 @@
     </parent>
 
     <packaging>jar</packaging>
-    <version>1.2.6-SNAPSHOT</version>
+    <version>1.2.6</version>
     <groupId>org.homio</groupId>
     <artifactId>homio-hquery</artifactId>
     <name>Homio hardware query api</name>

@@ -72,6 +72,9 @@ public interface MachineHardwareRepository {
     void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         ProgressBar progressBar);
 
+    @HardwareQuery(name = "Update", value = "$PM update -y && $PM full-upgrade -y && $PM autoremove -y && $PM clean -y && $PM autoclean -y", printOutput = true)
+    void update(@HQueryMaxWaitTimeout int maxSecondsTimeout, ProgressBar progressBar);
+
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
     void enableSystemCtl(@HQueryParam("soft") String soft);
 
@@ -97,11 +100,14 @@ public interface MachineHardwareRepository {
         for (File root : roots) {
             String path = root.getAbsolutePath();
             long totalSpace = root.getTotalSpace();
-            String capacity = formatCapacity(totalSpace - root.getUsableSpace());
+            DiscCapacity discCapacity = getFormat(totalSpace);
+            String used = formatCapacity(totalSpace - root.getUsableSpace(), discCapacity);
+            String total = formatCapacity(totalSpace, discCapacity);
+            String content = String.format("%s/%s%s", used, total, (discCapacity.name() + (discCapacity == DiscCapacity.B ? "" : "B")));
             if (roots.length == 1) {
-                return capacity;
+                return content;
             }
-            disks.add("%s:%s".formatted(path.substring(0, 1), capacity));
+            disks.add("%s:%s".formatted(path, content));
         }
         return String.join("; ", disks);
     }
@@ -162,14 +168,23 @@ public interface MachineHardwareRepository {
         return list.stream().filter(l -> l.contains(Architecture)).map(l -> StringUtils.trimToNull(l.split(":")[1])).findAny().orElse(null);
     }
 
-    private static String formatCapacity(long bytes) {
+    private static String formatCapacity(long bytes, DiscCapacity discCapacity) {
+        DecimalFormat df = new DecimalFormat("#.##");
+        int unit = 1024;
+        return df.format(bytes / Math.pow(unit, discCapacity.ordinal()));
+    }
+
+    private static DiscCapacity getFormat(long bytes) {
         if (bytes < 1024) {
-            return bytes + " B";
+            return DiscCapacity.B;
         }
         int unit = 1024;
         int exp = (int) (Math.log(bytes) / Math.log(unit));
         char[] pre = {'B', 'K', 'M', 'G', 'T', 'P', 'E'};
-        DecimalFormat df = new DecimalFormat("#.##");
-        return df.format(bytes / Math.pow(unit, exp)) + pre[exp] + "B";
+        return DiscCapacity.valueOf(String.valueOf(pre[exp]));
+    }
+
+    enum DiscCapacity {
+        B, K, M, G, T, P, E
     }
 }

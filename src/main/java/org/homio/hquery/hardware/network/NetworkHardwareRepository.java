@@ -2,8 +2,6 @@ package org.homio.hquery.hardware.network;
 
 import static java.lang.String.format;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -104,25 +102,6 @@ public interface NetworkHardwareRepository {
     @CurlQuery(value = "http://checkip.amazonaws.com", cache = true, ignoreOnError = true,
                mapping = TrimEndMapping.class, valueOnError = "127.0.0.1")
     String getOuterIpAddress();
-
-    @CurlQuery(value = "http://ip-api.com/json/:ip?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,"
-        + "lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query",
-               cache = true, ignoreOnError = true)
-    JsonNode getIpGeoLocation(@HQueryParam("ip") String ip);
-
-    @CurlQuery(value = "https://geocode.xyz/:city?json=1", cache = true, ignoreOnError = true)
-    JsonNode getCityGeolocation(@HQueryParam("city") String city);
-
-    @CurlQuery(value = "https://restcountries.com/v2/name/:country", cache = true, ignoreOnError = true)
-    JsonNode getCountryInformationInternal(@HQueryParam("country") String country);
-
-    default JsonNode getCountryInformation(String country) {
-        JsonNode jsonNode = getCountryInformationInternal(country);
-        if (jsonNode instanceof ArrayNode array && jsonNode.size() == 1) {
-            return array.iterator().next();
-        }
-        return jsonNode;
-    }
 
     default Map<String, Callable<Integer>> buildPingIpAddressTasks(String pinIpAddressRange, Consumer<String> log, Set<Integer> ports,
         int timeout, BiConsumer<String, Integer> handler) {
