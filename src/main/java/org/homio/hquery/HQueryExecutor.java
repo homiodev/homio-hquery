@@ -6,11 +6,11 @@ import org.springframework.core.env.Environment;
 
 public interface HQueryExecutor {
 
-    String[] getValues(HardwareQuery hardwareQuery);
+  String[] getValues(HardwareQuery hardwareQuery);
 
-    default String updateCommand(String cmd) {
-        return cmd;
-    }
+  default String updateCommand(String cmd) {
+    return cmd;
+  }
 
-    void prepare(ConfigurableListableBeanFactory beanFactory, Environment env);
+  void prepare(ConfigurableListableBeanFactory beanFactory, Environment env);
 }
