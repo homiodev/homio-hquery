@@ -8,24 +8,24 @@ import org.homio.hquery.api.ListParse.LineParse;
 @ToString
 public class NetworkStat {
 
-    @LineParse("Mode:([^\\s]+).*")
-    private String mode;
+  @LineParse("Mode:([^\\s]+).*")
+  private String mode;
 
-    @LineParse(".*Frequency:(.*) GHz.*")
-    private String frequency;
+  @LineParse(".*Frequency:(.*) GHz.*")
+  private String frequency;
 
-    @LineParse("Bit Rate=(\\d+) Mb/s.*")
-    private String bitRate;
+  @LineParse("Bit Rate=(\\d+) Mb/s.*")
+  private String bitRate;
 
-    @LineParse(".* ESSID:\"(.*)\"")
-    private String ssid;
+  @LineParse(".* ESSID:\"(.*)\"")
+  private String ssid;
 
-    @LineParse(".* Access Point: ([a-fA-F0-9:]*)")
-    private String accessPoint;
+  @LineParse(".* Access Point: ([a-fA-F0-9:]*)")
+  private String accessPoint;
 
-    @LineParse(".* Signal level=(-??\\d+)[^\\d].*")
-    private Integer strength;
+  @LineParse(".* Signal level=(-??\\d+)[^\\d].*")
+  private Integer strength;
 
-    @LineParse(".* Quality=(\\d+)[^\\d].*")
-    private Integer quality;
+  @LineParse(".* Quality=(\\d+)[^\\d].*")
+  private Integer quality;
 }

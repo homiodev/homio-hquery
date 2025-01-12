@@ -6,12 +6,9 @@ import jakarta.annotation.Nullable;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Authenticator;
-import java.net.HttpURLConnection;
-import java.net.PasswordAuthentication;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublisher;
@@ -24,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -31,6 +29,11 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.util.function.ThrowingBiFunction;
 import org.springframework.web.client.RestTemplate;
 
@@ -58,9 +61,28 @@ public final class Curl {
         return restTemplate.getForObject(url, responseType, uriVariables);
     }
 
+    public static <T> List<T> getList(String url, Class<T> responseType, Object... uriVariables) {
+        return restTemplate.exchange(url,
+                HttpMethod.GET, null, listOf(responseType), uriVariables).getBody();
+    }
+
     public static <T> T post(String url, Object request, Class<T> responseType,
                              Object... uriVariables) {
-        return restTemplate.postForObject(url, request, responseType, uriVariables);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<?> requestEntity = new HttpEntity<>(request, headers);
+
+        return restTemplate.postForObject(url, requestEntity, responseType, uriVariables);
+    }
+
+    public static <T> List<T> postList(String url, Object request, Class<T> responseType,
+                             Object... uriVariables) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<?> requestEntity = new HttpEntity<>(request, headers);
+
+        return restTemplate.exchange(url,
+                HttpMethod.POST, requestEntity, listOf(responseType), uriVariables).getBody();
     }
 
     public static void delete(String url, Object... uriVariables) {
@@ -217,19 +239,25 @@ public final class Curl {
         Files.createDirectories(targetPath.getParent());
         Files.deleteIfExists(targetPath);
         URL url = new URL(urlStr);
-        double fileSize = getFileSize(url);
-        // download without progress if less than 2 megabytes
-        if (fileSize / ONE_MB < 2) { // one mb
-            download(urlStr, targetPath);
-            return;
-        }
-        int maxMb = (int) (fileSize / ONE_MB);
-        URLConnection connection = getUrlConnection(url);
+        int fileSize = getFileSize(url);
+        InputStream inputStream = getUrlConnection(url).getInputStream();
         String fileName = urlStr;
         try {
             fileName = Paths.get(url.getPath()).getFileName().toString();
-        } catch (Exception ignore) {}
-        try (InputStream fileInputStream = new TransformFilterInputStream(connection.getInputStream(), progressBar, fileSize, maxMb, fileName)) {
+        } catch (Exception ignore) {
+        }
+        downloadWithProgress(inputStream, fileName, targetPath, progressBar, fileSize);
+    }
+
+    @SneakyThrows
+    public static void downloadWithProgress(InputStream inputStream, String fileName, Path targetPath, ProgressBar progressBar, long fileSize) {
+        // download without progress if less than 2 megabytes
+        if (fileSize / ONE_MB < 2) { // one mb
+            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        int maxMb = (int) (fileSize / ONE_MB);
+        try (InputStream fileInputStream = new TransformFilterInputStream(inputStream, progressBar, fileSize, maxMb, fileName)) {
             Files.copy(fileInputStream, targetPath);
         }
     }
@@ -255,10 +283,13 @@ public final class Curl {
         URLConnection conn = null;
         try {
             conn = url.openConnection();
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+
             if (conn instanceof HttpURLConnection) {
                 ((HttpURLConnection) conn).setRequestMethod("HEAD");
             }
-            conn.getInputStream();
+
             return conn.getContentLength();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -274,6 +305,30 @@ public final class Curl {
         connection.setConnectTimeout(60000);
         connection.setReadTimeout(60000);
         return connection;
+    }
+
+    public static <T> ParameterizedTypeReference<List<T>> listOf(final Class<T> type) {
+        return new ParameterizedTypeReference<>() {
+            @Override
+            public Type getType() {
+                return new ParameterizedType() {
+                    @Override
+                    public Type[] getActualTypeArguments() {
+                        return new Type[]{type};
+                    }
+
+                    @Override
+                    public Type getRawType() {
+                        return List.class;
+                    }
+
+                    @Override
+                    public Type getOwnerType() {
+                        return null;
+                    }
+                };
+            }
+        };
     }
 
     @Getter

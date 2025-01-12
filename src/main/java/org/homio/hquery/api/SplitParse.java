@@ -9,12 +9,12 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE})
 public @interface SplitParse {
 
-    String value();
+  String value();
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.FIELD, ElementType.METHOD})
-    @interface SplitParseIndex {
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target({ElementType.FIELD, ElementType.METHOD})
+  @interface SplitParseIndex {
 
-        int index();
-    }
+    int index();
+  }
 }

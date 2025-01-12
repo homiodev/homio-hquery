@@ -5,22 +5,22 @@ import java.util.function.BiConsumer;
 
 public interface ProgressBar extends BiConsumer<Double, String> {
 
-    void progress(double progress, @Nullable String message, boolean error);
+  void progress(double progress, @Nullable String message, boolean error);
 
-    default void progress(double progress, @Nullable String message) {
-        progress(progress, message, false);
-    }
+  default void progress(double progress, @Nullable String message) {
+    progress(progress, message, false);
+  }
 
-    default void done() {
-        progress(100, "Done");
-    }
+  default void done() {
+    progress(100, "Done");
+  }
 
-    @Override
-    default void accept(Double progress, @Nullable String message) {
-        progress(progress, message);
-    }
+  @Override
+  default void accept(Double progress, @Nullable String message) {
+    progress(progress, message);
+  }
 
-    default boolean isCancelled() {
-        return false;
-    }
+  default boolean isCancelled() {
+    return false;
+  }
 }

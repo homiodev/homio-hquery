@@ -11,39 +11,37 @@ import java.lang.annotation.Target;
 @Repeatable(HardwareQueries.class)
 public @interface HardwareQuery {
 
-    String name();
+  String name();
 
-    String[] value();
+  String[] value();
 
-    int maxSecondsTimeout() default 60;
+  int maxSecondsTimeout() default 60;
 
-    // define directory from which should start process
-    String dir() default "";
+  // define directory from which should start process
+  String dir() default "";
 
-    boolean printOutput() default false;
+  boolean printOutput() default false;
 
-    boolean ignoreOnError() default false;
+  boolean ignoreOnError() default false;
 
-    /**
-     * Set this to true if you want parse error from commands. This value also set ignoreOnError as true
-     * @return is redirect error input to regular input
-     */
-    boolean redirectErrorsToInputs() default false;
+  /**
+   * Set this to true if you want parse error from commands. This value also set ignoreOnError as
+   * true
+   *
+   * @return is redirect error input to regular input
+   */
+  boolean redirectErrorsToInputs() default false;
 
-    String[] win() default "";
+  String[] win() default "";
 
-    // how long cache valid in sec
-    int cacheValid() default 0;
+  // how long cache valid in sec
+  int cacheValid() default 0;
 
-    String valueOnError() default "";
+  String valueOnError() default "";
 
-    /**
-     * Timeout to wait when error stream is closed before force stop it
-     */
-    int errorStreamWaitTimeoutMs() default 250;
+  /** Timeout to wait when error stream is closed before force stop it */
+  int errorStreamWaitTimeoutMs() default 250;
 
-    /**
-     * Timeout to wait when input stream is closed before force stop it
-     */
-    int inputStreamWaitTimeoutMs() default 250;
+  /** Timeout to wait when input stream is closed before force stop it */
+  int inputStreamWaitTimeoutMs() default 250;
 }

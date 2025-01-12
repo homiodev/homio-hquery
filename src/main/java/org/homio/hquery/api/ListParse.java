@@ -9,36 +9,36 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface ListParse {
 
-    String delimiter();
+  String delimiter();
 
-    Class<?> clazz();
+  Class<?> clazz();
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.FIELD, ElementType.METHOD})
-    @interface LineParse {
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target({ElementType.FIELD, ElementType.METHOD})
+  @interface LineParse {
 
-        String value();
+    String value();
 
-        int group() default 1; // group to take after find()
-    }
+    int group() default 1; // group to take after find()
+  }
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.FIELD, ElementType.METHOD})
-    @interface BooleanLineParse {
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target({ElementType.FIELD, ElementType.METHOD})
+  @interface BooleanLineParse {
 
-        String value();
+    String value();
 
-        String when();
+    String when();
 
-        boolean inverse() default false;
+    boolean inverse() default false;
 
-        int group() default 1;
-    }
+    int group() default 1;
+  }
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.FIELD)
-    @interface LineParsers {
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.FIELD)
+  @interface LineParsers {
 
-        LineParse[] value();
-    }
+    LineParse[] value();
+  }
 }

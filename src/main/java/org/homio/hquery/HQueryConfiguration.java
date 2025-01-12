@@ -11,17 +11,20 @@ import org.springframework.core.type.AnnotationMetadata;
 @Configuration
 public class HQueryConfiguration implements ImportAware {
 
-    private AnnotationAttributes scanBaseClassesPackage;
+  private AnnotationAttributes scanBaseClassesPackage;
 
-    @Override
-    public void setImportMetadata(AnnotationMetadata metadata) {
-        scanBaseClassesPackage = AnnotationAttributes.fromMap(metadata.getAnnotationAttributes(EnableHQuery.class.getName()));
-    }
+  @Override
+  public void setImportMetadata(AnnotationMetadata metadata) {
+    scanBaseClassesPackage =
+        AnnotationAttributes.fromMap(
+            metadata.getAnnotationAttributes(EnableHQuery.class.getName()));
+  }
 
-    @Bean
-    public BeanFactoryPostProcessor beanFactoryPostProcessor(@Autowired(required = false) HardwareRepositoryFactoryPostHandler handler) {
-        return new HardwareRepositoryFactoryPostProcessor(
-            scanBaseClassesPackage.getString("scanBaseClassesPackage"),
-            handler);
-    }
+  @Bean
+  public BeanFactoryPostProcessor beanFactoryPostProcessor(
+      @Autowired HQueryLogger logger,
+      @Autowired(required = false) HQueryFactoryPostHandler handler) {
+    return new HQueryFactoryPostProcessor(
+        scanBaseClassesPackage.getString("scanBaseClassesPackage"), handler, logger);
+  }
 }

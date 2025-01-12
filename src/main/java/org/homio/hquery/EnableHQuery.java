@@ -13,5 +13,5 @@ import org.springframework.context.annotation.Import;
 @Documented
 public @interface EnableHQuery {
 
-    String scanBaseClassesPackage();
+  String scanBaseClassesPackage();
 }

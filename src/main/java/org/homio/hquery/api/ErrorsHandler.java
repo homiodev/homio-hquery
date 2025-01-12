@@ -9,23 +9,23 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface ErrorsHandler {
 
-    boolean throwError() default false;
+  boolean throwError() default false;
 
-    boolean logError() default true;
+  boolean logError() default true;
 
-    // specify error to throw
-    String onRetCodeError() default "";
+  // specify error to throw
+  String onRetCodeError() default "";
 
-    ErrorHandler[] errorHandlers() default {};
+  ErrorHandler[] errorHandlers() default {};
 
-    String notRecognizeError() default "";
+  String notRecognizeError() default "";
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.METHOD)
-    @interface ErrorHandler {
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.METHOD)
+  @interface ErrorHandler {
 
-        String throwError();
+    String throwError();
 
-        String onError();
-    }
+    String onError();
+  }
 }

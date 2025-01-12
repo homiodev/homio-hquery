@@ -26,33 +26,56 @@ public interface MachineHardwareRepository {
     AtomicReference<MachineInfo> MACHINE_INFO = new AtomicReference<>();
     OperatingSystemMXBean osBean = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
 
+    private static String parseInfoLine(ArrayList<String> list, String Architecture) {
+        return list.stream().filter(l -> l.contains(Architecture)).map(l -> StringUtils.trimToNull(l.split(":")[1])).findAny().orElse(null);
+    }
+
+    private static String formatCapacity(long bytes, DiscCapacity discCapacity) {
+        DecimalFormat df = new DecimalFormat("#.##");
+        int unit = 1024;
+        return df.format(bytes / Math.pow(unit, discCapacity.ordinal()));
+    }
+
+    private static DiscCapacity getFormat(long bytes) {
+        if (bytes < 1024) {
+            return DiscCapacity.B;
+        }
+        int unit = 1024;
+        int exp = (int) (Math.log(bytes) / Math.log(unit));
+        char[] pre = {'B', 'K', 'M', 'G', 'T', 'P', 'E'};
+        return DiscCapacity.valueOf(String.valueOf(pre[exp]));
+    }
+
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") String command);
 
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
-                   ignoreOnError = true, redirectErrorsToInputs = true)
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command")
+    String executeSilent(@HQueryParam("command") String command);
+
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command",
+            ignoreOnError = true, redirectErrorsToInputs = true)
     String executeNoErrorThrow(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         ProgressBar progressBar);
 
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true,
-                   ignoreOnError = true, redirectErrorsToInputs = true)
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", ignoreOnError = true, redirectErrorsToInputs = true)
     ArrayList<String> executeNoErrorThrowList(@HQueryParam("command") String command,
-        @HQueryMaxWaitTimeout int maxSecondsTimeout,
-        ProgressBar progressBar);
+        @HQueryMaxWaitTimeout int maxSecondsTimeout, ProgressBar progressBar);
 
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command")
     String execute(@HQueryParam("command") String command, ProgressBar progressBar);
 
     @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
     String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
-    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command", printOutput = true)
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command")
+    String executeSilent(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout);
+
+    @HardwareQuery(name = "Execute general command", value = ":command", win = ":command")
     String execute(@HQueryParam("command") String command, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         ProgressBar progressBar);
 
-    @HardwareQuery(name = "Get cpu temperature", value = "vcgencmd measure_temp | grep  -o -E '[[:digit:]].*'",
-                   printOutput = true)
-    String getCpuTemperature();
+    @HardwareQuery(name = "Get cpu temperature", value = "vcgencmd measure_temp | grep -o -E '[[:digit:]]+(\\.[[:digit:]]+)?'")
+    Double getCpuTemperature();
 
     @HardwareQuery(name = "Get service status", value = "systemctl is-active :serviceName", printOutput = true)
     int getServiceStatus(@HQueryParam("serviceName") String serviceName);
@@ -62,17 +85,22 @@ public interface MachineHardwareRepository {
 
     @HardwareQuery(name = "Get OS name", value = "cat /etc/os-release", cacheValid = Integer.MAX_VALUE, printOutput = true)
     HardwareOs getOs();
+
     @HardwareQuery(name = "Change file permission", value = "chmod :mode -R :path", printOutput = true)
     void setPermissions(@HQueryParam("path") Path path, @HQueryParam("mode") int mode);
 
-    @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
+    @HardwareQuery(name = "Install software", value = "$INSTALL :soft", printOutput = true)
     void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout);
 
-    @HardwareQuery(name = "Install software", value = "$PM install -y :soft", printOutput = true)
+    @HardwareQuery(name = "Install software", value = "$INSTALL :soft")
     void installSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
         ProgressBar progressBar);
 
-    @HardwareQuery(name = "Update", value = "$PM update -y && $PM full-upgrade -y && $PM autoremove -y && $PM clean -y && $PM autoclean -y", printOutput = true)
+    @HardwareQuery(name = "Install software", value = "$UNINSTALL :soft")
+    void uninstallSoftware(@HQueryParam("soft") String soft, @HQueryMaxWaitTimeout int maxSecondsTimeout,
+                         ProgressBar progressBar);
+
+    @HardwareQuery(name = "Update", value = "$UPDATE")
     void update(@HQueryMaxWaitTimeout int maxSecondsTimeout, ProgressBar progressBar);
 
     @HardwareQuery(name = "Enable systemctl service", value = "systemctl enable :soft", printOutput = true)
@@ -113,9 +141,8 @@ public interface MachineHardwareRepository {
     }
 
     default String getCpuLoad() {
-        return osBean.getCpuLoad() * 100F + "%";
+        return String.format("%.2f%%", osBean.getCpuLoad() * 100F);
     }
-
 
     // format(used/total) 200/900mb
     default String getRamMemory() {
@@ -162,26 +189,6 @@ public interface MachineHardwareRepository {
             MACHINE_INFO.set(info);
         }
         return MACHINE_INFO.get();
-    }
-
-    private static String parseInfoLine(ArrayList<String> list, String Architecture) {
-        return list.stream().filter(l -> l.contains(Architecture)).map(l -> StringUtils.trimToNull(l.split(":")[1])).findAny().orElse(null);
-    }
-
-    private static String formatCapacity(long bytes, DiscCapacity discCapacity) {
-        DecimalFormat df = new DecimalFormat("#.##");
-        int unit = 1024;
-        return df.format(bytes / Math.pow(unit, discCapacity.ordinal()));
-    }
-
-    private static DiscCapacity getFormat(long bytes) {
-        if (bytes < 1024) {
-            return DiscCapacity.B;
-        }
-        int unit = 1024;
-        int exp = (int) (Math.log(bytes) / Math.log(unit));
-        char[] pre = {'B', 'K', 'M', 'G', 'T', 'P', 'E'};
-        return DiscCapacity.valueOf(String.valueOf(pre[exp]));
     }
 
     enum DiscCapacity {

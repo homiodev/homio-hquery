@@ -12,15 +12,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -28,24 +20,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
-import org.homio.hquery.api.CurlQuery;
-import org.homio.hquery.api.ErrorsHandler;
-import org.homio.hquery.api.HQueryMaxWaitTimeout;
-import org.homio.hquery.api.HQueryParam;
-import org.homio.hquery.api.HardwareException;
-import org.homio.hquery.api.HardwareQuery;
-import org.homio.hquery.api.HardwareRepository;
-import org.homio.hquery.api.ListParse;
+import org.homio.hquery.api.*;
 import org.homio.hquery.api.ListParse.BooleanLineParse;
 import org.homio.hquery.api.ListParse.LineParse;
 import org.homio.hquery.api.ListParse.LineParsers;
-import org.homio.hquery.api.RawParse;
-import org.homio.hquery.api.SplitParse;
 import org.homio.hquery.hardware.other.MachineHardwareRepository;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -54,19 +38,63 @@ import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 
-public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostProcessor {
+@AllArgsConstructor
+public class HQueryFactoryPostProcessor implements BeanFactoryPostProcessor {
 
     public static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{.*?}");
     private static final Map<String, ProcessCache> cache = new HashMap<>();
 
     private final String basePackages;
-    private final HardwareRepositoryFactoryPostHandler handler;
+    private final HQueryFactoryPostHandler handler;
+    private final HQueryLogger logger;
 
-    HardwareRepositoryFactoryPostProcessor(String basePackages, HardwareRepositoryFactoryPostHandler handler) {
-        this.basePackages = basePackages;
-        this.handler = handler;
+    private static String replaceValues(String text, BiFunction<String, String, String> propertyGetter) {
+        Matcher matcher = HQueryFactoryPostProcessor.ENV_PATTERN.matcher(text);
+        StringBuilder noteBuffer = new StringBuilder();
+        while (matcher.find()) {
+            String group = matcher.group();
+            matcher.appendReplacement(noteBuffer, getEnvProperty(group, propertyGetter));
+        }
+        matcher.appendTail(noteBuffer);
+        return noteBuffer.isEmpty() ? text : noteBuffer.toString();
+    }
+
+    @SneakyThrows
+    private static String getEnvProperty(String value, BiFunction<String, String, String> propertyGetter) {
+        String[] array = getSpringValuesPattern(value);
+        return propertyGetter.apply(array[0], array[1]);
+    }
+
+    private static String[] getSpringValuesPattern(String value) {
+        String valuePattern = value.substring(2, value.length() - 1);
+        return valuePattern.contains(":") ? valuePattern.split(":") : new String[]{valuePattern, ""};
+    }
+
+    @SneakyThrows
+    private static <T> Constructor<T> findObjectConstructor(Class<T> clazz, Class<?>... parameterTypes) {
+        if (parameterTypes.length > 0) {
+            return clazz.getConstructor(parameterTypes);
+        }
+        for (Constructor<?> constructor : clazz.getConstructors()) {
+            if (constructor.getParameterCount() == 0) {
+                constructor.setAccessible(true);
+                return (Constructor<T>) constructor;
+            }
+        }
+        return null;
+    }
+
+    @SneakyThrows
+    private static <T> T newInstance(Class<T> clazz) {
+        Constructor<T> constructor = findObjectConstructor(clazz);
+        if (constructor != null) {
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        }
+        throw new IllegalArgumentException("Unable to find default constructor for class: " + clazz);
     }
 
     @Override
@@ -77,13 +105,13 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         List<Class<?>> classes = getClassesWithAnnotation();
         for (Class<?> aClass : classes) {
             beanFactory.registerSingleton(aClass.getSimpleName(),
-                Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
-                    if (method.getName().equals("toString")) {
-                        return aClass.getSimpleName() + ":" +
-                            aClass.getDeclaredAnnotation(HardwareRepository.class).description();
-                    }
-                    return handleQuery(env, hQueryExecutor, aClass, proxy, method, args);
-                }));
+                    Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{aClass}, (proxy, method, args) -> {
+                        if (method.getName().equals("toString")) {
+                            return aClass.getSimpleName() + ":" +
+                                   aClass.getDeclaredAnnotation(HardwareRepository.class).description();
+                        }
+                        return handleQuery(env, hQueryExecutor, aClass, proxy, method, args);
+                    }));
         }
 
         hQueryExecutor.prepare(beanFactory, env);
@@ -143,7 +171,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
                     processCache.response = mapping.apply(result);
 
                 } catch (Exception ex) {
-                    System.err.printf("Error while execute curl command '%s'. Msg: '%s'%n", command, getErrorMessage(ex));
+                    String msg = String.format("Error while execute curl command '%s'. Msg: '%s'%n", command, getErrorMessage(ex));
+                    logger.error(msg);
                     processCache.errors.add(getErrorMessage(ex));
                     if (!curlQuery.ignoreOnError()) {
                         throw new HardwareException(processCache.errors, processCache.inputs, -1);
@@ -190,7 +219,10 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     @SneakyThrows
     private Object handleHardwareQuery(HardwareQuery hardwareQuery, Object[] args, Method method, Environment env,
-        Class<?> aClass, HQueryExecutor hQueryExecutor) {
+                                       Class<?> aClass, HQueryExecutor hQueryExecutor) {
+        if(env.acceptsProfiles(Profiles.of("offline"))) {
+            return null;
+        }
         ErrorsHandler errorsHandler = method.getAnnotation(ErrorsHandler.class);
         int maxWaitTimeout = getMaxWaitTimeout(hardwareQuery, args, method);
         ProgressBar progressBar = getProgressBar(args, hardwareQuery.printOutput());
@@ -208,7 +240,8 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             processCache = cache.get(command);
         } else {
             processCache = new ProcessCache(hardwareQuery.cacheValid());
-            System.out.printf("Execute: '%s'. Command: '%s'%n", hardwareQuery.name(), command);
+            progressBar.progress(0,
+                    "Execute: '%s'. Command: '%s'".formatted(hardwareQuery.name(), command));
             ProcessBuilder processBuilder;
             StreamGobbler streamGobbler = new StreamGobbler(hardwareQuery.name(), message -> {
                 processCache.inputs.add(message);
@@ -255,20 +288,20 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         }
 
         return handleCommandResult(hardwareQuery, method, errorsHandler, command, processCache.retValue, processCache.inputs,
-            processCache.errors);
+                processCache.errors);
     }
 
     private ProgressBar getProgressBar(Object[] args, boolean printOutput) {
         var progressBar = args == null || args.length == 0 ? null :
-            Stream.of(args).filter(arg -> arg instanceof ProgressBar)
-                  .map(arg -> (ProgressBar) arg).findAny().orElse(null);
+                Stream.of(args).filter(arg -> arg instanceof ProgressBar)
+                        .map(arg -> (ProgressBar) arg).findAny().orElse(null);
         if (progressBar == null) {
             progressBar = (progress, message, isError) -> {
                 if (printOutput) {
                     if (isError) {
-                        System.err.println(message);
+                        logger.error(message);
                     } else {
-                        System.out.println(message);
+                        logger.info(message);
                     }
                 }
             };
@@ -318,10 +351,10 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
     }
 
     private Object handleCommandResult(
-        HardwareQuery hardwareQuery,
-        Method method,
-        ErrorsHandler errorsHandler,
-        String command, int retValue, List<String> inputs, List<String> errors) {
+            HardwareQuery hardwareQuery,
+            Method method,
+            ErrorsHandler errorsHandler,
+            String command, int retValue, List<String> inputs, List<String> errors) {
         Class<?> returnType = method.getReturnType();
 
         // in case we expect return num we ignore any errors
@@ -344,14 +377,14 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             if (errorsHandler != null) {
                 String error = errors.isEmpty() ? errorsHandler.onRetCodeError() : String.join("; ", errors);
                 if (errorsHandler.logError()) {
-                    System.err.println(error);
+                    logger.error(error);
                 }
                 if (errorsHandler.throwError()) {
                     throw new IllegalStateException(error);
                 }
             } else {
-                System.err.printf("Error while execute command '%s'. Code: '%s', Msg: '%s'%n", command, retValue,
-                    String.join(", ", errors));
+                logger.error(String.format("Error while execute command '%s'. Code: '%s', Msg: '%s'%n", command, retValue,
+                        String.join(", ", errors)));
                 if (!hardwareQuery.ignoreOnError()) {
                     throw new HardwareException(errors, inputs, retValue);
                 } else if (!hardwareQuery.valueOnError().isEmpty()) {
@@ -362,7 +395,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             if (!hardwareQuery.redirectErrorsToInputs()) {
                 for (String error : errors) {
                     if (!error.isEmpty()) {
-                        System.err.printf("Error '%s'%n", error);
+                        logger.error(String.format("Error '%s'%n", error));
                     }
                 }
             } else {
@@ -370,8 +403,17 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             }
             inputs = Collections.unmodifiableCollection(inputs).stream().map(String::trim).collect(Collectors.toList());
 
+            String joinedValue = String.join("", inputs);
             if (returnType.isAssignableFrom(String.class)) {
-                return String.join("", inputs);
+                return joinedValue;
+            }
+
+            if (returnType.isAssignableFrom(Integer.class)) {
+                return Integer.valueOf(joinedValue);
+            } else if (returnType.isAssignableFrom(Double.class)) {
+                return Double.parseDouble(joinedValue);
+            } else if (returnType.isAssignableFrom(Boolean.class)) {
+                return Boolean.parseBoolean(joinedValue);
             }
 
             if (method.isAnnotationPresent(ListParse.class)) {
@@ -491,7 +533,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private Object handleBucket(List<String> inputs, RawParse rawParse, Field field) {
         return SystemUtils.IS_OS_WINDOWS ? newInstance(rawParse.win()).handle(inputs, field) :
-            newInstance(rawParse.nix()).handle(inputs, field);
+                newInstance(rawParse.nix()).handle(inputs, field);
     }
 
     private Object handleType(String value, Class<?> type) {
@@ -570,52 +612,6 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
         return foundClasses;
     }
 
-    private static String replaceValues(String text, BiFunction<String, String, String> propertyGetter) {
-        Matcher matcher = HardwareRepositoryFactoryPostProcessor.ENV_PATTERN.matcher(text);
-        StringBuilder noteBuffer = new StringBuilder();
-        while (matcher.find()) {
-            String group = matcher.group();
-            matcher.appendReplacement(noteBuffer, getEnvProperty(group, propertyGetter));
-        }
-        matcher.appendTail(noteBuffer);
-        return noteBuffer.isEmpty() ? text : noteBuffer.toString();
-    }
-
-    @SneakyThrows
-    private static String getEnvProperty(String value, BiFunction<String, String, String> propertyGetter) {
-        String[] array = getSpringValuesPattern(value);
-        return propertyGetter.apply(array[0], array[1]);
-    }
-
-    private static String[] getSpringValuesPattern(String value) {
-        String valuePattern = value.substring(2, value.length() - 1);
-        return valuePattern.contains(":") ? valuePattern.split(":") : new String[]{valuePattern, ""};
-    }
-
-    @SneakyThrows
-    private static <T> Constructor<T> findObjectConstructor(Class<T> clazz, Class<?>... parameterTypes) {
-        if (parameterTypes.length > 0) {
-            return clazz.getConstructor(parameterTypes);
-        }
-        for (Constructor<?> constructor : clazz.getConstructors()) {
-            if (constructor.getParameterCount() == 0) {
-                constructor.setAccessible(true);
-                return (Constructor<T>) constructor;
-            }
-        }
-        return null;
-    }
-
-    @SneakyThrows
-    private static <T> T newInstance(Class<T> clazz) {
-        Constructor<T> constructor = findObjectConstructor(clazz);
-        if (constructor != null) {
-            constructor.setAccessible(true);
-            return constructor.newInstance();
-        }
-        throw new IllegalArgumentException("Unable to find default constructor for class: " + clazz);
-    }
-
     private String getErrorMessage(Throwable ex) {
         if (ex == null) {
             return null;
@@ -634,18 +630,7 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
     private boolean isParamHasAnnotation(Annotation[][] apiParams, int i, Class<? extends Annotation> aClass) {
         return apiParams.length > i && apiParams[i] != null && apiParams[i].length > 0
-            && aClass.isAssignableFrom(apiParams[i][0].getClass());
-    }
-
-    @RequiredArgsConstructor
-    private static class ProcessCache {
-
-        final int cacheValidInSec;
-        final List<String> errors = new ArrayList<>();
-        final List<String> inputs = new ArrayList<>();
-        int retValue;
-        Object response;
-        long executedTime = System.currentTimeMillis();
+               && aClass.isAssignableFrom(apiParams[i][0].getClass());
     }
 
     private HQueryExecutor buildHQueryExecutor() {
@@ -663,7 +648,9 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
             };
         } else {
             return new HQueryExecutor() {
-                private String pm;
+                private String pmInstall;
+                private String pmUninstall;
+                private String pmUpdate;
 
                 @Override
                 public String[] getValues(HardwareQuery hardwareQuery) {
@@ -672,18 +659,48 @@ public class HardwareRepositoryFactoryPostProcessor implements BeanFactoryPostPr
 
                 @Override
                 public String updateCommand(String cmd) {
-                    return cmd.contains("$PM") ? cmd.replace("$PM", pm) : cmd;
+                    if (cmd.contains("$INSTALL")) {
+                        cmd = cmd.replace("$INSTALL", pmInstall);
+                    }
+                    if (cmd.contains("$UNINSTALL")) {
+                        cmd = cmd.replace("$UNINSTALL", pmUninstall);
+                    }
+                    if (cmd.contains("$UPDATE")) {
+                        cmd = cmd.replace("$UPDATE", pmUpdate);
+                    }
+                    return cmd;
                 }
 
                 @Override
                 public void prepare(ConfigurableListableBeanFactory beanFactory, Environment env) {
-                    pm = env.getProperty("project_manager", env.getProperty("PACKAGEMANAGER", ""));
-                    if (StringUtils.isEmpty(pm)) {
+                    pmInstall = env.getProperty("project_manager", env.getProperty("PACKAGEMANAGER", ""));
+                    if (StringUtils.isEmpty(pmInstall)) {
                         MachineHardwareRepository machineHardwareRepository = beanFactory.getBean(MachineHardwareRepository.class);
-                        pm = machineHardwareRepository.getOs().getPackageManager();
+                        String pm = machineHardwareRepository.getOs().getPackageManager();
+                        pmInstall = pm + " install -y";
+                        pmUninstall = pm + " remove -y";
+                        pmUpdate = "$PM update -y && $PM full-upgrade -y && $PM autoremove -y && $PM clean -y && $PM autoclean -y";
+                        if (pm.equals("apk")) {
+                            pmInstall = "apk add";
+                            pmUninstall = "apk del";
+                            pmUpdate = "apk update";
+                        }
+                        logger.info("OS: " + machineHardwareRepository.getOs());
+                        logger.info("PM: " + pmInstall);
                     }
                 }
             };
         }
+    }
+
+    @RequiredArgsConstructor
+    private static class ProcessCache {
+
+        final int cacheValidInSec;
+        final List<String> errors = new ArrayList<>();
+        final List<String> inputs = new ArrayList<>();
+        int retValue;
+        Object response;
+        long executedTime = System.currentTimeMillis();
     }
 }

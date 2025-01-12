@@ -9,12 +9,12 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 public @interface HardwareRepository {
 
-    String stringValueOnDisable() default "unknown";
+  String stringValueOnDisable() default "unknown";
 
-    int intValueOnDisable() default -1;
+  int intValueOnDisable() default -1;
 
-    boolean boolValueOnDisable() default false;
+  boolean boolValueOnDisable() default false;
 
-    // uses for logical description. Uses in toString() method
-    String description() default "";
+  // uses for logical description. Uses in toString() method
+  String description() default "";
 }
