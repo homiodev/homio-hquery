@@ -23,4 +23,8 @@ public interface ProgressBar extends BiConsumer<Double, String> {
   default boolean isCancelled() {
     return false;
   }
+
+  default void onCancel(Runnable handler) {}
+
+  default void logToConsole(boolean value) {}
 }
